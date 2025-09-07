@@ -2,6 +2,7 @@ gtk_tests = [
   # testname, optional extra sources
   ['imagednd'],
   ['testcursor'],
+  ['webgpu-integration-test'],
   ['callbackcursor'],
   ['devicepixels'],
   ['testsections'],

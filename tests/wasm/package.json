@@ -1,0 +1,32 @@
+{
+  "name": "@superstruct/gtk-wasm-tests",
+  "version": "1.0.0",
+  "description": "Comprehensive test suite for GTK WASM implementation",
+  "main": "test-runner.js",
+  "scripts": {
+    "test": "node test-runner.js",
+    "test:browser": "npm run serve & sleep 2 && npm run test:puppeteer",
+    "test:puppeteer": "node browser-test-runner.js",
+    "serve": "npx http-server . -p 8080 -c-1",
+    "benchmark": "node benchmark-runner.js",
+    "validate": "npm run test && npm run benchmark"
+  },
+  "keywords": [
+    "gtk",
+    "wasm",
+    "webassembly",
+    "testing",
+    "benchmarks",
+    "gui"
+  ],
+  "author": "Superstruct Ltd",
+  "license": "LGPL-2.1-or-later",
+  "devDependencies": {
+    "puppeteer": "^21.0.0",
+    "http-server": "^14.0.0",
+    "playwright": "^1.40.0"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}

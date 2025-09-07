@@ -36,6 +36,10 @@
 #include <gsk/gpu/gskvulkanrenderer.h>
 #include <gsk/gpu/gskglrenderer.h>
 
+#ifdef __EMSCRIPTEN__
+#include <gsk/webgpu/gskwebgpurenderer.h>
+#endif
+
 #include <gsk/gsktypes.h>
 #include <gsk/gskenumtypes.h>
 

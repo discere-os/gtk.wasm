@@ -1,0 +1,21 @@
+# Act configuration for local GitHub Actions testing
+# Copyright 2025 Superstruct Ltd, New Zealand
+# Licensed under LGPL-2.1-or-later
+
+# Use specific runner images for better compatibility
+-P ubuntu-22.04=catthehacker/ubuntu:act-22.04
+-P ubuntu-latest=catthehacker/ubuntu:act-latest
+
+# Container options
+--container-options="--memory=8g"
+
+# Enable verbose logging
+--verbose
+
+# Bind mount for performance
+--bind
+
+# Environment variables for local testing
+--env GITHUB_TOKEN=""
+--env CI=true
+--env RUNNER_TEMP=/tmp

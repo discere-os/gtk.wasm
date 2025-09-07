@@ -1,0 +1,54 @@
+{
+  "name": "@superstruct/gtk.wasm",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "GTK WebGPU WASM implementation with hardware-accelerated rendering",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "cd examples && make all",
+    "test": "playwright test",
+    "test:webgpu": "playwright test --project=gtk-webgpu-chrome",
+    "test:canvas": "playwright test --project=gtk-canvas-fallback",
+    "test:performance": "playwright test --project=gtk-webgpu-performance",
+    "serve": "cd examples && python3 -m http.server 8765",
+    "dev": "npm run serve"
+  },
+  "files": [
+    "dist/",
+    "examples/",
+    "gsk/",
+    "test/"
+  ],
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./wasm": {
+      "import": "./dist/wasm-loader.js"
+    }
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.40.0"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/superstruct/superstruct.git",
+    "directory": "gtk.wasm"
+  },
+  "keywords": [
+    "gtk",
+    "webgpu",
+    "wasm",
+    "webassembly",
+    "ui",
+    "hardware-acceleration",
+    "graphics"
+  ],
+  "author": "Superstruct Ltd",
+  "license": "LGPL-2.1-or-later"
+}

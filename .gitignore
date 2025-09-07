@@ -2,3 +2,43 @@
 .flatpak-builder/
 .vscode/
 subprojects/*.wrap
+
+# WASM build artifacts
+_build_wasm/
+build/
+build-*/
+dist/
+install/
+install-*/
+node_modules/
+package-lock.json
+yarn.lock
+
+# WASM-specific files
+*.wasm
+*.js.mem
+*.js.symbols
+*.js.temp
+
+# WASM temporary files
+*.wast
+*.wat
+benchmark-report-*.json
+
+# Testing and CI artifacts
+test-results/
+playwright-report/
+coverage/
+.nyc_output/
+build-logs/
+
+# WebGPU development
+examples/*.wasm
+examples/*.js
+examples/*.html.data
+examples/webgpu-shaders/
+
+# Emscripten cache
+emsdk/
+emsdk_env.sh
+.emscripten_cache/

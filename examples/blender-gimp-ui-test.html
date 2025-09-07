@@ -1,0 +1,767 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GTK WebGPU - Professional Application UI Test</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #2b2b2b;
+            color: #ffffff;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            overflow: hidden;
+        }
+        
+        .app-container {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+        
+        .menu-bar {
+            background: #3c3c3c;
+            padding: 4px 8px;
+            border-bottom: 1px solid #555;
+            font-size: 13px;
+        }
+        
+        .toolbar {
+            background: #373737;
+            padding: 8px;
+            border-bottom: 1px solid #555;
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+        
+        .main-area {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+        
+        .sidebar {
+            width: 300px;
+            background: #323232;
+            border-right: 1px solid #555;
+            overflow-y: auto;
+        }
+        
+        .viewport {
+            flex: 1;
+            position: relative;
+            background: #1e1e1e;
+        }
+        
+        .properties-panel {
+            width: 250px;
+            background: #323232;
+            border-left: 1px solid #555;
+            overflow-y: auto;
+        }
+        
+        .status-bar {
+            background: #2b2b2b;
+            padding: 4px 8px;
+            border-top: 1px solid #555;
+            font-size: 12px;
+        }
+        
+        canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+        
+        .control-panel {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 15px;
+            border-radius: 8px;
+            z-index: 1000;
+        }
+        
+        .metrics {
+            display: grid;
+            grid-template-columns: auto 1fr;
+            gap: 8px;
+            font-size: 12px;
+            margin-bottom: 15px;
+        }
+        
+        .controls {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        
+        button {
+            background: #4a4a4a;
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        
+        button:hover {
+            background: #5a5a5a;
+        }
+        
+        .widget-section {
+            margin: 10px;
+            padding: 10px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 4px;
+        }
+        
+        .widget-title {
+            font-weight: bold;
+            margin-bottom: 8px;
+            color: #ffffff;
+        }
+        
+        .performance-critical {
+            color: #ff6b6b;
+        }
+        
+        .performance-good {
+            color: #51cf66;
+        }
+        
+        .performance-warning {
+            color: #ffd43b;
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Menu Bar (like Blender/GIMP) -->
+        <div class="menu-bar" id="menuBar">
+            File | Edit | Add | Mesh | Object | Select | View | Render | Window | Help
+        </div>
+        
+        <!-- Toolbar (tool icons) -->
+        <div class="toolbar" id="toolbar">
+            <button id="selectTool">Select</button>
+            <button id="moveTool">Move</button>
+            <button id="rotateTool">Rotate</button>
+            <button id="scaleTool">Scale</button>
+            |
+            <button id="addCube">Add Cube</button>
+            <button id="addSphere">Add Sphere</button>
+            <button id="addPlane">Add Plane</button>
+        </div>
+        
+        <!-- Main Application Area -->
+        <div class="main-area">
+            <!-- Sidebar (Outliner/Layers) -->
+            <div class="sidebar">
+                <div class="widget-section">
+                    <div class="widget-title">Scene Collection</div>
+                    <div id="sceneOutliner"></div>
+                </div>
+                <div class="widget-section">
+                    <div class="widget-title">Layers</div>
+                    <div id="layersList"></div>
+                </div>
+            </div>
+            
+            <!-- 3D Viewport / Canvas Area -->
+            <div class="viewport">
+                <canvas id="gtkCanvas" width="800" height="600"></canvas>
+                
+                <!-- Performance Overlay -->
+                <div class="control-panel">
+                    <div class="metrics" id="performanceMetrics">
+                        <span>Renderer:</span> <span id="rendererInfo">Initializing...</span>
+                        <span>FPS:</span> <span id="fps">0</span>
+                        <span>Frame Time:</span> <span id="frameTime">0 ms</span>
+                        <span>Widgets:</span> <span id="widgetCount">0</span>
+                        <span>Memory:</span> <span id="memoryUsage">0 MB</span>
+                        <span>GPU Load:</span> <span id="gpuLoad">0%</span>
+                    </div>
+                    
+                    <div class="controls">
+                        <button id="stressTest">Stress Test (1000 widgets)</button>
+                        <button id="complexLayout">Complex Layout Test</button>
+                        <button id="menuTest">Menu System Test</button>
+                        <button id="clearAll">Clear All</button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Properties Panel -->
+            <div class="properties-panel">
+                <div class="widget-section">
+                    <div class="widget-title">Transform</div>
+                    <div id="transformControls"></div>
+                </div>
+                <div class="widget-section">
+                    <div class="widget-title">Material Properties</div>
+                    <div id="materialControls"></div>
+                </div>
+                <div class="widget-section">
+                    <div class="widget-title">Modifier Properties</div>
+                    <div id="modifierControls"></div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Status Bar -->
+        <div class="status-bar" id="statusBar">
+            Ready | Vertices: 0 | Faces: 0 | Objects: 1 | WebGPU: Enabled
+        </div>
+    </div>
+
+    <script type="module">
+        class ProfessionalGTKWebGPUTest {
+            constructor() {
+                this.canvas = document.getElementById('gtkCanvas');
+                this.ctx = null;
+                this.webgpuDevice = null;
+                this.webgpuContext = null;
+                this.renderPipeline = null;
+                this.isWebGPUEnabled = false;
+                
+                this.performanceMetrics = {
+                    fps: 0,
+                    frameTime: 0,
+                    widgetCount: 0,
+                    memoryUsage: 0,
+                    gpuLoad: 0
+                };
+                
+                this.widgets = [];
+                this.animationFrameId = null;
+                this.lastFrameTime = 0;
+                this.frameCount = 0;
+                this.fpsUpdateInterval = null;
+                
+                this.init();
+            }
+            
+            async init() {
+                console.log('[Professional GTK Test] Initializing...');
+                await this.initializeWebGPU();
+                this.setupEventListeners();
+                this.startPerformanceMonitoring();
+                this.startRenderLoop();
+                
+                // Pre-populate with professional UI elements
+                this.createProfessionalUI();
+            }
+            
+            async initializeWebGPU() {
+                if (!navigator.gpu) {
+                    console.warn('[WebGPU] Not available - falling back to Canvas 2D');
+                    this.fallbackToCanvas2D();
+                    return;
+                }
+                
+                try {
+                    const adapter = await navigator.gpu.requestAdapter({
+                        powerPreference: 'high-performance'
+                    });
+                    
+                    if (!adapter) {
+                        throw new Error('No WebGPU adapter available');
+                    }
+                    
+                    this.webgpuDevice = await adapter.requestDevice({
+                        requiredFeatures: [],
+                        requiredLimits: {
+                            maxBindGroups: 4,
+                            maxUniformBufferBindingSize: 65536
+                        }
+                    });
+                    
+                    this.webgpuContext = this.canvas.getContext('webgpu');
+                    const format = navigator.gpu.getPreferredCanvasFormat();
+                    
+                    this.webgpuContext.configure({
+                        device: this.webgpuDevice,
+                        format: format,
+                        alphaMode: 'premultiplied'
+                    });
+                    
+                    await this.createRenderPipeline(format);
+                    this.isWebGPUEnabled = true;
+                    
+                    document.getElementById('rendererInfo').textContent = 'WebGPU Hardware Accelerated';
+                    document.getElementById('statusBar').innerHTML = 
+                        'Ready | WebGPU: ✅ Enabled | High Performance Mode';
+                    
+                    console.log('[WebGPU] Successfully initialized with hardware acceleration');
+                    
+                } catch (error) {
+                    console.warn('[WebGPU] Initialization failed:', error);
+                    this.fallbackToCanvas2D();
+                }
+            }
+            
+            async createRenderPipeline(format) {
+                const shaderCode = `
+                    struct VertexOutput {
+                        @builtin(position) position: vec4<f32>,
+                        @location(0) color: vec4<f32>,
+                        @location(1) uv: vec2<f32>,
+                    }
+                    
+                    @vertex fn vertex_main(
+                        @location(0) position: vec2<f32>,
+                        @location(1) color: vec4<f32>,
+                        @location(2) uv: vec2<f32>
+                    ) -> VertexOutput {
+                        var output: VertexOutput;
+                        output.position = vec4<f32>(position, 0.0, 1.0);
+                        output.color = color;
+                        output.uv = uv;
+                        return output;
+                    }
+                    
+                    @fragment fn fragment_main(input: VertexOutput) -> @location(0) vec4<f32> {
+                        // Professional UI gradient effect
+                        let gradient = mix(input.color, input.color * 0.8, input.uv.y);
+                        return vec4<f32>(gradient.rgb, input.color.a);
+                    }
+                `;
+                
+                const shaderModule = this.webgpuDevice.createShaderModule({ code: shaderCode });
+                
+                this.renderPipeline = this.webgpuDevice.createRenderPipeline({
+                    layout: 'auto',
+                    vertex: {
+                        module: shaderModule,
+                        entryPoint: 'vertex_main',
+                        buffers: [{
+                            arrayStride: 32, // 2 floats position + 4 floats color + 2 floats uv
+                            attributes: [
+                                { format: 'float32x2', offset: 0, shaderLocation: 0 },  // position
+                                { format: 'float32x4', offset: 8, shaderLocation: 1 },  // color
+                                { format: 'float32x2', offset: 24, shaderLocation: 2 }, // uv
+                            ]
+                        }]
+                    },
+                    fragment: {
+                        module: shaderModule,
+                        entryPoint: 'fragment_main',
+                        targets: [{ format: format, blend: {
+                            color: {
+                                srcFactor: 'src-alpha',
+                                dstFactor: 'one-minus-src-alpha'
+                            },
+                            alpha: {
+                                srcFactor: 'one',
+                                dstFactor: 'one-minus-src-alpha'
+                            }
+                        }}]
+                    },
+                    primitive: {
+                        topology: 'triangle-list'
+                    }
+                });
+            }
+            
+            fallbackToCanvas2D() {
+                this.ctx = this.canvas.getContext('2d');
+                this.isWebGPUEnabled = false;
+                
+                document.getElementById('rendererInfo').textContent = 'Canvas 2D Software Fallback';
+                document.getElementById('statusBar').innerHTML = 
+                    'Ready | WebGPU: ❌ Unavailable | Canvas 2D Fallback';
+                    
+                console.log('[Canvas2D] Using software fallback rendering');
+            }
+            
+            createProfessionalUI() {
+                // Create typical Blender/GIMP UI elements
+                this.addWidget('menu', { type: 'menubar', items: ['File', 'Edit', 'View', 'Render'] });
+                this.addWidget('toolbar', { type: 'toolbar', tools: 8 });
+                this.addWidget('outliner', { type: 'treeview', items: 20 });
+                this.addWidget('properties', { type: 'property_panel', sections: 5 });
+                this.addWidget('timeline', { type: 'timeline', keyframes: 50 });
+                
+                // Add complex nested layouts
+                for (let i = 0; i < 10; i++) {
+                    this.addWidget('panel', { 
+                        type: 'complex_panel', 
+                        nested_widgets: Math.floor(Math.random() * 10) + 5,
+                        has_scrollbar: true
+                    });
+                }
+            }
+            
+            addWidget(type, options = {}) {
+                const widget = {
+                    id: this.widgets.length,
+                    type: type,
+                    x: Math.random() * (this.canvas.width - 100),
+                    y: Math.random() * (this.canvas.height - 50),
+                    width: options.width || (50 + Math.random() * 100),
+                    height: options.height || (30 + Math.random() * 40),
+                    color: this.getWidgetColor(type),
+                    options: options,
+                    createdAt: performance.now()
+                };
+                
+                this.widgets.push(widget);
+                this.performanceMetrics.widgetCount = this.widgets.length;
+                
+                console.log(`[Widget] Added ${type} widget (total: ${this.widgets.length})`);
+                return widget;
+            }
+            
+            getWidgetColor(type) {
+                const colors = {
+                    'menu': [0.2, 0.2, 0.2, 1.0],      // Dark gray
+                    'button': [0.3, 0.5, 0.8, 1.0],    // Blue
+                    'toolbar': [0.25, 0.25, 0.25, 1.0], // Darker gray
+                    'panel': [0.15, 0.15, 0.15, 0.9],   // Panel background
+                    'outliner': [0.18, 0.18, 0.18, 1.0], // Tree view
+                    'properties': [0.16, 0.16, 0.16, 1.0], // Properties
+                    'timeline': [0.12, 0.12, 0.12, 1.0],   // Timeline
+                    'complex_panel': [0.2, 0.3, 0.4, 0.95] // Complex UI
+                };
+                return colors[type] || [Math.random(), Math.random(), Math.random(), 1.0];
+            }
+            
+            render() {
+                if (this.isWebGPUEnabled) {
+                    this.renderWebGPU();
+                } else {
+                    this.renderCanvas2D();
+                }
+            }
+            
+            renderWebGPU() {
+                if (!this.renderPipeline || !this.webgpuDevice || !this.webgpuContext) return;
+                
+                const commandEncoder = this.webgpuDevice.createCommandEncoder();
+                const renderPass = commandEncoder.beginRenderPass({
+                    colorAttachments: [{
+                        view: this.webgpuContext.getCurrentTexture().createView(),
+                        clearValue: { r: 0.11, g: 0.11, b: 0.11, a: 1.0 }, // Professional dark background
+                        loadOp: 'clear',
+                        storeOp: 'store'
+                    }]
+                });
+                
+                renderPass.setPipeline(this.renderPipeline);
+                
+                // Render each widget as a quad
+                for (const widget of this.widgets) {
+                    const vertices = this.createWidgetVertices(widget);
+                    const vertexBuffer = this.webgpuDevice.createBuffer({
+                        size: vertices.length * 4,
+                        usage: GPUBufferUsage.VERTEX,
+                        mappedAtCreation: true
+                    });
+                    
+                    new Float32Array(vertexBuffer.getMappedRange()).set(vertices);
+                    vertexBuffer.unmap();
+                    
+                    renderPass.setVertexBuffer(0, vertexBuffer);
+                    renderPass.draw(6); // Two triangles per widget
+                    
+                    vertexBuffer.destroy();
+                }
+                
+                renderPass.end();
+                this.webgpuDevice.queue.submit([commandEncoder.finish()]);
+            }
+            
+            createWidgetVertices(widget) {
+                const { x, y, width, height, color } = widget;
+                const [r, g, b, a] = color;
+                
+                // Convert screen coordinates to normalized device coordinates
+                const x1 = (x / this.canvas.width) * 2 - 1;
+                const y1 = -((y / this.canvas.height) * 2 - 1);
+                const x2 = ((x + width) / this.canvas.width) * 2 - 1;
+                const y2 = -(((y + height) / this.canvas.height) * 2 - 1);
+                
+                // Two triangles forming a quad, with professional gradient UVs
+                return [
+                    // Triangle 1
+                    x1, y1, r, g, b, a, 0, 0, // Top-left
+                    x2, y1, r, g, b, a, 1, 0, // Top-right
+                    x1, y2, r, g, b, a, 0, 1, // Bottom-left
+                    
+                    // Triangle 2
+                    x2, y1, r, g, b, a, 1, 0, // Top-right
+                    x2, y2, r, g, b, a, 1, 1, // Bottom-right
+                    x1, y2, r, g, b, a, 0, 1, // Bottom-left
+                ];
+            }
+            
+            renderCanvas2D() {
+                if (!this.ctx) return;
+                
+                this.ctx.fillStyle = '#1c1c1c';
+                this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+                
+                // Render professional UI widgets
+                for (const widget of this.widgets) {
+                    this.renderWidgetCanvas2D(widget);
+                }
+            }
+            
+            renderWidgetCanvas2D(widget) {
+                const { x, y, width, height, color, type } = widget;
+                const [r, g, b, a] = color;
+                
+                // Professional gradient effect
+                const gradient = this.ctx.createLinearGradient(x, y, x, y + height);
+                gradient.addColorStop(0, `rgba(${Math.floor(r*255)}, ${Math.floor(g*255)}, ${Math.floor(b*255)}, ${a})`);
+                gradient.addColorStop(1, `rgba(${Math.floor(r*255*0.8)}, ${Math.floor(g*255*0.8)}, ${Math.floor(b*255*0.8)}, ${a})`);
+                
+                this.ctx.fillStyle = gradient;
+                this.ctx.fillRect(x, y, width, height);
+                
+                // Professional border styling
+                this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+                this.ctx.lineWidth = 1;
+                this.ctx.strokeRect(x + 0.5, y + 0.5, width - 1, height - 1);
+                
+                // Widget type-specific rendering
+                this.renderWidgetDetails(widget);
+            }
+            
+            renderWidgetDetails(widget) {
+                const { x, y, width, height, type, options } = widget;
+                
+                this.ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+                this.ctx.font = '10px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+                this.ctx.textAlign = 'center';
+                
+                let text = type.toUpperCase();
+                if (type === 'complex_panel' && options.nested_widgets) {
+                    text += ` (${options.nested_widgets})`;
+                }
+                
+                this.ctx.fillText(text, x + width/2, y + height/2 + 3);
+                
+                // Additional professional UI details
+                if (type === 'toolbar' && options.tools) {
+                    for (let i = 0; i < Math.min(options.tools, 6); i++) {
+                        const toolX = x + 10 + (i * 15);
+                        const toolY = y + 8;
+                        this.ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+                        this.ctx.fillRect(toolX, toolY, 12, 12);
+                    }
+                }
+            }
+            
+            setupEventListeners() {
+                document.getElementById('stressTest').addEventListener('click', () => {
+                    this.runStressTest();
+                });
+                
+                document.getElementById('complexLayout').addEventListener('click', () => {
+                    this.createComplexLayout();
+                });
+                
+                document.getElementById('menuTest').addEventListener('click', () => {
+                    this.testMenuSystem();
+                });
+                
+                document.getElementById('clearAll').addEventListener('click', () => {
+                    this.clearAllWidgets();
+                });
+                
+                // Blender-style shortcuts
+                document.addEventListener('keydown', (e) => {
+                    if (e.key === 'Tab') {
+                        e.preventDefault();
+                        this.addWidget('mesh_edit_mode');
+                    } else if (e.key === 'g') {
+                        this.addWidget('grab_tool');
+                    } else if (e.key === 'r') {
+                        this.addWidget('rotate_tool');
+                    } else if (e.key === 's') {
+                        this.addWidget('scale_tool');
+                    }
+                });
+            }
+            
+            runStressTest() {
+                console.log('[Stress Test] Adding 1000 widgets...');
+                const startTime = performance.now();
+                
+                for (let i = 0; i < 1000; i++) {
+                    const widgetTypes = ['panel', 'button', 'complex_panel', 'toolbar', 'menu'];
+                    const type = widgetTypes[Math.floor(Math.random() * widgetTypes.length)];
+                    this.addWidget(type, { 
+                        nested_widgets: Math.floor(Math.random() * 5) + 1,
+                        stress_test: true
+                    });
+                }
+                
+                const endTime = performance.now();
+                console.log(`[Stress Test] Created 1000 widgets in ${(endTime - startTime).toFixed(2)}ms`);
+                
+                // Monitor performance for 10 seconds
+                setTimeout(() => {
+                    console.log(`[Stress Test] Performance after 10s: ${this.performanceMetrics.fps} FPS`);
+                }, 10000);
+            }
+            
+            createComplexLayout() {
+                console.log('[Complex Layout] Creating professional application layout...');
+                
+                // Simulate Blender's complex UI
+                const layouts = [
+                    { type: 'header', widgets: 15 },
+                    { type: 'tool_shelf', widgets: 25 },
+                    { type: 'outliner', widgets: 50 },
+                    { type: 'properties_panel', widgets: 80 },
+                    { type: 'timeline', widgets: 100 },
+                    { type: 'viewport_overlays', widgets: 30 }
+                ];
+                
+                layouts.forEach(layout => {
+                    for (let i = 0; i < layout.widgets; i++) {
+                        this.addWidget(layout.type, { 
+                            complex_layout: true,
+                            layout_section: layout.type
+                        });
+                    }
+                });
+            }
+            
+            testMenuSystem() {
+                console.log('[Menu Test] Creating complex menu hierarchy...');
+                
+                // Simulate complex dropdown menus like GIMP
+                const menuItems = ['File', 'Edit', 'Select', 'View', 'Image', 'Layer', 'Colors', 'Tools', 'Filters', 'Windows', 'Help'];
+                
+                menuItems.forEach((menu, index) => {
+                    for (let i = 0; i < 8; i++) {
+                        this.addWidget('menu_item', {
+                            menu_parent: menu,
+                            submenu_level: Math.floor(Math.random() * 3),
+                            has_separator: i % 3 === 0,
+                            has_shortcut: Math.random() > 0.5
+                        });
+                    }
+                });
+            }
+            
+            clearAllWidgets() {
+                this.widgets = [];
+                this.performanceMetrics.widgetCount = 0;
+                console.log('[Clear] All widgets cleared');
+            }
+            
+            startPerformanceMonitoring() {
+                let frameCount = 0;
+                let lastTime = performance.now();
+                
+                this.fpsUpdateInterval = setInterval(() => {
+                    const currentTime = performance.now();
+                    const deltaTime = currentTime - lastTime;
+                    
+                    this.performanceMetrics.fps = Math.round((frameCount * 1000) / deltaTime);
+                    this.performanceMetrics.frameTime = deltaTime / frameCount;
+                    this.performanceMetrics.memoryUsage = this.getMemoryUsage();
+                    this.performanceMetrics.gpuLoad = this.estimateGPULoad();
+                    
+                    this.updatePerformanceDisplay();
+                    
+                    frameCount = 0;
+                    lastTime = currentTime;
+                }, 1000);
+                
+                // Frame counter
+                const countFrames = () => {
+                    frameCount++;
+                    requestAnimationFrame(countFrames);
+                };
+                countFrames();
+            }
+            
+            getMemoryUsage() {
+                if ('memory' in performance) {
+                    return Math.round(performance.memory.usedJSHeapSize / 1024 / 1024);
+                }
+                return Math.round(this.widgets.length * 0.1); // Estimate
+            }
+            
+            estimateGPULoad() {
+                // Estimate GPU load based on widget count and rendering complexity
+                const baseLoad = Math.min(this.widgets.length / 10, 80);
+                const complexityMultiplier = this.isWebGPUEnabled ? 0.5 : 1.2;
+                return Math.round(baseLoad * complexityMultiplier);
+            }
+            
+            updatePerformanceDisplay() {
+                const metrics = this.performanceMetrics;
+                
+                document.getElementById('fps').textContent = `${metrics.fps} FPS`;
+                document.getElementById('frameTime').textContent = `${metrics.frameTime.toFixed(1)} ms`;
+                document.getElementById('widgetCount').textContent = metrics.widgetCount;
+                document.getElementById('memoryUsage').textContent = `${metrics.memoryUsage} MB`;
+                document.getElementById('gpuLoad').textContent = `${metrics.gpuLoad}%`;
+                
+                // Color coding for performance
+                const fpsElement = document.getElementById('fps');
+                if (metrics.fps >= 60) {
+                    fpsElement.className = 'performance-good';
+                } else if (metrics.fps >= 30) {
+                    fpsElement.className = 'performance-warning';
+                } else {
+                    fpsElement.className = 'performance-critical';
+                }
+            }
+            
+            startRenderLoop() {
+                const render = (currentTime) => {
+                    this.render();
+                    this.animationFrameId = requestAnimationFrame(render);
+                };
+                render(0);
+            }
+            
+            destroy() {
+                if (this.animationFrameId) {
+                    cancelAnimationFrame(this.animationFrameId);
+                }
+                if (this.fpsUpdateInterval) {
+                    clearInterval(this.fpsUpdateInterval);
+                }
+            }
+        }
+        
+        // Initialize the professional GTK WebGPU test
+        window.professionalGTKTest = new ProfessionalGTKWebGPUTest();
+        
+        // Expose for testing
+        window.runProfessionalUITests = function() {
+            const test = window.professionalGTKTest;
+            
+            console.log('🧪 Running Professional UI Tests...');
+            
+            // Test 1: Stress test
+            setTimeout(() => test.runStressTest(), 1000);
+            
+            // Test 2: Complex layout
+            setTimeout(() => test.createComplexLayout(), 3000);
+            
+            // Test 3: Menu system
+            setTimeout(() => test.testMenuSystem(), 5000);
+            
+            console.log('✅ Professional UI tests queued');
+        };
+        
+        // Auto-start some tests
+        setTimeout(() => window.runProfessionalUITests(), 2000);
+        
+    </script>
+</body>
+</html>

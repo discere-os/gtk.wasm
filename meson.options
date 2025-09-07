@@ -62,6 +62,21 @@ option('vulkan',
        value: 'enabled',
        description : 'Enable Vulkan support including the Vulkan renderer')
 
+option('webgpu-renderer',
+       type: 'feature',
+       value: 'auto',
+       description : 'Enable WebGPU renderer for WASM builds')
+
+option('simd-support',
+       type: 'boolean', 
+       value: true,
+       description : 'Enable SIMD optimizations for WebGPU renderer')
+
+option('threading-support',
+       type: 'boolean',
+       value: false, 
+       description : 'Enable threading support for WebGPU renderer')
+
 option('cloudproviders',
        type: 'feature',
        value: 'disabled',

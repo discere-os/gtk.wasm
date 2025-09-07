@@ -1,0 +1,32 @@
+# GTK WASM Cross-compilation Configuration  
+# Copyright 2025 Superstruct Ltd, New Zealand
+# Licensed under LGPL-2.1-or-later
+
+[binaries]
+c = 'emcc'
+cpp = 'em++'
+ar = 'emar'
+strip = 'emstrip'
+pkgconfig = 'emconfigure pkg-config'
+objcopy = 'emconfigure objcopy'
+
+[host_machine]
+system = 'emscripten'
+cpu_family = 'wasm32'
+cpu = 'wasm32'
+endian = 'little'
+
+[properties]
+sizeof_void_p = 4
+sizeof_wchar_t = 4
+needs_exe_wrapper = false
+
+[built-in options]
+c_std = 'gnu11'
+cpp_std = 'c++11' 
+default_library = 'static'
+
+# WASM-specific optimizations
+[project options]
+buildtype = 'release'
+warning_level = 1

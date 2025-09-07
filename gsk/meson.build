@@ -120,6 +120,16 @@ if get_variable('broadway_enabled')
   gsk_public_headers += gsk_public_broadway_headers
 endif
 
+# WebGPU renderer support for WASM
+webgpu_enabled = host_machine.system() == 'emscripten'
+if webgpu_enabled
+  gsk_public_webgpu_headers = files([
+    'webgpu/gskwebgpurenderer.h'
+  ])
+  install_headers(gsk_public_webgpu_headers, subdir: 'gtk-4.0/gsk/webgpu')
+  gsk_public_headers += gsk_public_webgpu_headers
+endif
+
 gsk_private_vulkan_shaders = []
 gsk_private_vulkan_compiled_shaders = []
 gsk_private_vulkan_compiled_shaders_deps = []
@@ -138,9 +148,23 @@ endif # have_vulkan
 
 subdir('gpu/shaders')
 
+if webgpu_enabled
+  subdir('webgpu')
+endif
+
 if get_variable('broadway_enabled')
   gsk_public_sources += files([
     'broadway/gskbroadwayrenderer.c',
+  ])
+endif
+
+if webgpu_enabled
+  gsk_private_sources += files([
+    'webgpu/gskwebgpurenderer.c',
+    'webgpu/gskwebgpudevice.c', 
+    'webgpu/gskwebgpushaders.c',
+    'webgpu/gskwebgpurendernodes.c',
+    'webgpu/gskwebgpuintegration.c',
   ])
 endif
 
@@ -187,6 +211,11 @@ gsk_deps = [
   libgdk_dep,
 ]
 
+webgpu_deps = []
+if webgpu_enabled
+  webgpu_deps += [gsk_webgpu_dep]
+endif
+
 libgsk_f16c = static_library('gsk_f16c',
   sources: gsk_f16c_sources,
   dependencies: gsk_deps,
@@ -207,7 +236,7 @@ libgsk = static_library('gsk',
     gsk_private_vulkan_shader_headers,
     gsk_private_gpu_shader_headers,
   ],
-  dependencies: gsk_deps,
+  dependencies: gsk_deps + webgpu_deps,
   include_directories: [ confinc, ],
   c_args: [
     '-DGTK_COMPILATION',
