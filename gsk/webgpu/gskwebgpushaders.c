@@ -16,6 +16,47 @@
  */
 
 #include "gskwebgpushaders.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+/* Load WGSL shader from embedded virtual filesystem */
+char *gsk_webgpu_load_shader_file(const char *filename) {
+  char filepath[512];
+  
+  // Try multiple locations in virtual filesystem
+  const char *shader_paths[] = {
+    "/shaders/%s",                    // Root shader directory
+    "/gsk/webgpu/shaders/%s",        // GTK WebGPU shader directory  
+    "/assets/shaders/%s",            // Assets directory
+    "/usr/share/gtk-4.0/shaders/%s", // System shader directory
+    NULL
+  };
+  
+  for (int i = 0; shader_paths[i]; i++) {
+    snprintf(filepath, sizeof(filepath), shader_paths[i], filename);
+    
+    FILE *file = fopen(filepath, "r");
+    if (file) {
+      // Successfully found shader file
+      fseek(file, 0, SEEK_END);
+      long length = ftell(file);
+      fseek(file, 0, SEEK_SET);
+      
+      char *content = g_malloc(length + 1);
+      size_t read_bytes = fread(content, 1, length, file);
+      content[read_bytes] = '\0';
+      
+      fclose(file);
+      
+      g_debug("Loaded shader: %s (%ld bytes)", filepath, length);
+      return content;
+    }
+  }
+  
+  g_warning("Failed to load shader file: %s (tried %d locations)", filename, i);
+  return NULL;
+}
 
 /* Common vertex layout and functions used across all shaders */
 const char *gsk_webgpu_get_vertex_layout_wgsl(void) {
@@ -71,41 +112,78 @@ const char *gsk_webgpu_get_common_functions_wgsl(void) {
     "}\n";
 }
 
-/* Basic 2D vertex shader for UI rendering */
-const char *gsk_webgpu_shader_vertex_2d = 
-  "struct Uniforms {\n"
-  "  mvp_matrix: mat4x4<f32>,\n"
-  "  viewport_size: vec2<f32>,\n"
-  "  time: f32,\n"
-  "  _padding: f32,\n"
-  "}\n"
-  "\n"
-  "@group(0) @binding(0) var<uniform> uniforms: Uniforms;\n"
-  "\n"
-  "@vertex fn vs_main(input: VertexInput) -> VertexOutput {\n"
-  "  var output: VertexOutput;\n"
-  "  output.position = uniforms.mvp_matrix * vec4<f32>(input.position, 0.0, 1.0);\n"
-  "  output.tex_coord = input.tex_coord;\n"
-  "  output.color = input.color;\n"
-  "  output.world_pos = input.position;\n"
-  "  return output;\n"
-  "}\n";
+/* Basic 2D vertex shader for UI rendering - loaded from external file */
+static char *gsk_webgpu_shader_vertex_2d = NULL;
 
-/* Solid color fragment shader */
-const char *gsk_webgpu_shader_color = 
-  "@fragment fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {\n"
-  "  return premultiply_alpha(input.color);\n"
-  "}\n";
+const char *gsk_webgpu_get_shader_vertex_2d(void) {
+  if (!gsk_webgpu_shader_vertex_2d) {
+    char *common = gsk_webgpu_load_shader_file("common.wgsl");
+    char *vertex = gsk_webgpu_load_shader_file("vertex_2d.wgsl");
+    
+    if (common && vertex) {
+      // Combine common definitions with vertex shader
+      size_t total_len = strlen(common) + strlen(vertex) + 1;
+      gsk_webgpu_shader_vertex_2d = g_malloc(total_len);
+      snprintf(gsk_webgpu_shader_vertex_2d, total_len, "%s\n%s", common, vertex);
+      
+      g_free(common);
+      g_free(vertex);
+    } else {
+      g_warning("Failed to load vertex shader components");
+      return NULL;
+    }
+  }
+  
+  return gsk_webgpu_shader_vertex_2d;
+}
 
-/* Texture sampling fragment shader */
-const char *gsk_webgpu_shader_texture = 
-  "@group(1) @binding(0) var texture_sampler: sampler;\n"
-  "@group(1) @binding(1) var texture_2d: texture_2d<f32>;\n"
-  "\n"
-  "@fragment fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {\n"
-  "  let tex_color = textureSample(texture_2d, texture_sampler, input.tex_coord);\n"
-  "  return premultiply_alpha(tex_color * input.color);\n"
-  "}\n";
+/* Solid color fragment shader - loaded from external file */
+static char *gsk_webgpu_shader_color = NULL;
+
+const char *gsk_webgpu_get_shader_color(void) {
+  if (!gsk_webgpu_shader_color) {
+    char *common = gsk_webgpu_load_shader_file("common.wgsl");
+    char *color = gsk_webgpu_load_shader_file("color.wgsl");
+    
+    if (common && color) {
+      size_t total_len = strlen(common) + strlen(color) + 1;
+      gsk_webgpu_shader_color = g_malloc(total_len);
+      snprintf(gsk_webgpu_shader_color, total_len, "%s\n%s", common, color);
+      
+      g_free(common);
+      g_free(color);
+    } else {
+      g_warning("Failed to load color shader components");
+      return NULL;
+    }
+  }
+  
+  return gsk_webgpu_shader_color;
+}
+
+/* Texture sampling fragment shader - loaded from external file */
+static char *gsk_webgpu_shader_texture = NULL;
+
+const char *gsk_webgpu_get_shader_texture(void) {
+  if (!gsk_webgpu_shader_texture) {
+    char *common = gsk_webgpu_load_shader_file("common.wgsl");
+    char *texture = gsk_webgpu_load_shader_file("texture.wgsl");
+    
+    if (common && texture) {
+      size_t total_len = strlen(common) + strlen(texture) + 1;
+      gsk_webgpu_shader_texture = g_malloc(total_len);
+      snprintf(gsk_webgpu_shader_texture, total_len, "%s\n%s", common, texture);
+      
+      g_free(common);
+      g_free(texture);
+    } else {
+      g_warning("Failed to load texture shader components");
+      return NULL;
+    }
+  }
+  
+  return gsk_webgpu_shader_texture;
+}
 
 /* Linear gradient fragment shader */
 const char *gsk_webgpu_shader_linear_gradient = 

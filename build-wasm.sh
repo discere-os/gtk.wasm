@@ -156,8 +156,8 @@ configure_build() {
         "minimal")
             backend_args="-Dbroadway-backend=true -Dx11-backend=false -Dwayland-backend=false -Dwin32-backend=false -Dmacos-backend=false -Dandroid-backend=false"
             ;;
-        "standard"|"full")
-            backend_args="-Dbroadway-backend=true -Dwasm-backend=true -Dx11-backend=false -Dwayland-backend=false -Dwin32-backend=false -Dmacos-backend=false -Dandroid-backend=false"
+        "standard"|"full") 
+            backend_args="-Dbroadway-backend=true -Dx11-backend=false -Dwayland-backend=false -Dwin32-backend=false -Dmacos-backend=false -Dandroid-backend=false"
             ;;
     esac
     
@@ -184,7 +184,7 @@ configure_build() {
     # Build configuration
     local build_args="-Dintrospection=disabled -Ddocumentation=false -Dman-pages=false -Dbuild-demos=false -Dbuild-testsuite=false -Dbuild-examples=false -Dbuild-tests=false"
     
-    # Meson setup command
+    # Meson setup command  
     meson setup "$BUILD_DIR" \
         --cross-file=wasm-cross.txt \
         --buildtype="$BUILD_TYPE" \

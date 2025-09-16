@@ -2,12 +2,14 @@
 # Copyright 2025 Superstruct Ltd, New Zealand
 # Licensed under LGPL-2.1-or-later
 
+# Include pipeline management in build
 webgpu_sources = [
   'gskwebgpurenderer.c',
-  'gskwebgpudevice.c',
+  'gskwebgpudevice.c', 
   'gskwebgpushaders.c',
   'gskwebgpurendernodes.c',
   'gskwebgpuintegration.c',
+  'gskwebgpupipelines.c',
 ]
 
 webgpu_headers = [
@@ -25,11 +27,15 @@ webgpu_c_args = [
   '-DGSK_WEBGPU_ENABLED',
 ]
 
-# Add Emscripten WebGPU support
+# Add Emscripten WebGPU support with comprehensive shader preloading
 if get_option('webgpu_renderer')
   webgpu_c_args += [
     '-sUSE_WEBGPU=1',
     '-sASYNCIFY',
+    '--preload-file=@0@/shaders@/shaders'.format(meson.current_source_dir()),
+    '-sALLOW_MEMORY_GROWTH=1',
+    '-sMAXIMUM_MEMORY=2GB',
+    '-sFILESYSTEM=1'
   ]
   
   # Add SIMD support if requested

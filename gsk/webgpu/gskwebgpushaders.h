@@ -25,15 +25,22 @@ G_BEGIN_DECLS
 /**
  * Comprehensive WGSL shader library for GTK widget rendering.
  * These shaders implement the complete GSK rendering pipeline in WebGPU.
+ * 
+ * Shaders are loaded from external .wgsl files for better maintainability.
  */
 
-/* Basic vertex shader for 2D rendering */
-extern const char *gsk_webgpu_shader_vertex_2d;
+/* Shader file management */
+G_GNUC_INTERNAL char *gsk_webgpu_load_shader_file(const char *filename);
 
-/* Fragment shaders for different render node types */
-extern const char *gsk_webgpu_shader_color;
-extern const char *gsk_webgpu_shader_texture;
-extern const char *gsk_webgpu_shader_linear_gradient;
+/* Basic vertex shader for 2D rendering */
+G_GNUC_INTERNAL const char *gsk_webgpu_get_shader_vertex_2d(void);
+
+/* Fragment shaders for different render node types */  
+G_GNUC_INTERNAL const char *gsk_webgpu_get_shader_color(void);
+G_GNUC_INTERNAL const char *gsk_webgpu_get_shader_texture(void);
+G_GNUC_INTERNAL const char *gsk_webgpu_get_shader_linear_gradient(void);
+G_GNUC_INTERNAL const char *gsk_webgpu_get_shader_radial_gradient(void);
+G_GNUC_INTERNAL const char *gsk_webgpu_get_shader_blur(void);
 extern const char *gsk_webgpu_shader_radial_gradient;
 extern const char *gsk_webgpu_shader_conic_gradient;
 extern const char *gsk_webgpu_shader_border;

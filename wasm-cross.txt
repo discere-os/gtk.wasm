@@ -19,6 +19,13 @@ endian = 'little'
 [properties]
 sizeof_void_p = 4
 sizeof_wchar_t = 4
+sizeof_char = 1
+sizeof_short = 2
+sizeof_int = 4
+sizeof_long = 4
+sizeof_long_long = 8
+sizeof_size_t = 4
+sizeof_ssize_t = 4
 needs_exe_wrapper = false
 
 [built-in options]
@@ -26,7 +33,10 @@ c_std = 'gnu11'
 cpp_std = 'c++11' 
 default_library = 'static'
 
+# Use existing GLib WASM port instead of subproject
+pkg_config_path = '../glib.wasm/lib/pkgconfig:../cairo.wasm/lib/pkgconfig'
+
 # WASM-specific optimizations
 [project options]
 buildtype = 'release'
-warning_level = 1
+warning_level = '1'

@@ -1,8 +1,8 @@
 project('gtk', 'c',
         version: '4.20.1',
         default_options: [
-          'buildtype=debugoptimized',
-          'warning_level=1',
+          'buildtype=release',
+          'glib:default_library=static',
           # We only need c99, but glib needs GNU-specific features
           # https://github.com/mesonbuild/meson/issues/2289
           'c_std=gnu11',
