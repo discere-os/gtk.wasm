@@ -178,6 +178,23 @@ reference. See:
  - [3.x release notes](https://developer.gnome.org/gtk3/stable/gtk-migrating-2-to-3.html)
  - [4.x release notes](https://docs.gtk.org/gtk4/migrating-3to4.html)
 
+## 💖 Support This Work
+
+This WebAssembly port is part of a larger effort to bring professional desktop applications to browsers with native performance.
+
+**👨‍💻 About the Maintainer**: [Isaac Johnston (@superstructor)](https://github.com/superstructor) - Building foundational browser-native computing infrastructure through systematic C/C++ to WebAssembly porting.
+
+**📊 Impact**: 70+ open source WASM libraries enabling professional applications like Blender, GIMP, and scientific computing tools to run natively in browsers.
+
+**🚀 Your Support Enables**:
+- Continued maintenance and updates
+- Performance optimizations
+- New library ports and integrations
+- Documentation and tutorials
+- Cross-browser compatibility testing
+
+**[💖 Sponsor this work](https://github.com/sponsors/superstructor)** to help build the future of browser-native computing.
+
 Licensing terms
 ---------------
 
