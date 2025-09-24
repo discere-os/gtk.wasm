@@ -3,11 +3,13 @@
 # Licensed under LGPL-2.1-or-later
 
 [binaries]
-c = 'emcc'
-cpp = 'em++'
+c = '/home/isaac/src/discere/discere-nucleus/client/emscripten/gtk.wasm/emcc-wrapper.sh'
+cpp = '/home/isaac/src/discere/discere-nucleus/client/emscripten/gtk.wasm/em++-wrapper.sh'
+c_ld = '/home/isaac/src/discere/discere-nucleus/client/emscripten/gtk.wasm/emcc-wrapper.sh'
+cpp_ld = '/home/isaac/src/discere/discere-nucleus/client/emscripten/gtk.wasm/em++-wrapper.sh'
 ar = 'emar'
 strip = 'emstrip'
-pkgconfig = 'emconfigure pkg-config'
+pkg-config = 'pkg-config'
 objcopy = 'emconfigure objcopy'
 
 [host_machine]
@@ -17,6 +19,8 @@ cpu = 'wasm32'
 endian = 'little'
 
 [properties]
+has_function_printf = true
+skip_sanity_check = true
 sizeof_void_p = 4
 sizeof_wchar_t = 4
 sizeof_char = 1
@@ -27,14 +31,17 @@ sizeof_long_long = 8
 sizeof_size_t = 4
 sizeof_ssize_t = 4
 needs_exe_wrapper = false
+# Force meson to think the linker supports shared libraries
+shared_lib_support = true
 
 [built-in options]
 c_std = 'gnu11'
-cpp_std = 'c++11' 
+cpp_std = 'c++11'
 default_library = 'static'
+prefer_static = true
 
 # Use existing GLib WASM port instead of subproject
-pkg_config_path = '../glib.wasm/lib/pkgconfig:../cairo.wasm/lib/pkgconfig'
+pkg_config_path = '/home/isaac/src/discere/discere-nucleus/client/emscripten/glib.wasm/install/lib/pkgconfig:/home/isaac/src/discere/discere-nucleus/client/emscripten/pango.wasm/install/lib/pkgconfig:/home/isaac/src/discere/discere-nucleus/client/emscripten/cairo.wasm/install/lib/pkgconfig:/home/isaac/src/discere/discere-nucleus/client/emscripten/pixman.wasm/install/lib/pkgconfig:/home/isaac/src/discere/discere-nucleus/client/emscripten/harfbuzz.wasm/install/lib/pkgconfig:/home/isaac/src/discere/discere-nucleus/client/emscripten/fribidi.wasm/install/lib/pkgconfig:/home/isaac/src/discere/discere-nucleus/client/emscripten/fontconfig.wasm/install/lib/pkgconfig:/home/isaac/src/discere/discere-nucleus/client/emscripten/freetype.wasm/install/lib/pkgconfig:/home/isaac/src/discere/discere-nucleus/client/emscripten/gdk-pixbuf.wasm/install/lib/pkgconfig:/home/isaac/src/discere/discere-nucleus/client/emscripten/graphene.wasm/install/lib/pkgconfig:/home/isaac/src/discere/discere-nucleus/client/emscripten/librsvg.wasm/install/lib/pkgconfig:/home/isaac/src/discere/discere-nucleus/client/emscripten/epoxy.wasm/install/lib/pkgconfig'
 
 # WASM-specific optimizations
 [project options]

@@ -28,7 +28,7 @@ webgpu_c_args = [
 ]
 
 # Add Emscripten WebGPU support with comprehensive shader preloading
-if get_option('webgpu_renderer')
+if get_option('webgpu-renderer').enabled()
   webgpu_c_args += [
     '-sUSE_WEBGPU=1',
     '-sASYNCIFY',

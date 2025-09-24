@@ -107,6 +107,21 @@ option('accesskit',
        value: 'disabled',
        description: 'Enable the AccessKit backend for accessibility')
 
+option('webgpu-renderer',
+       type: 'feature',
+       value: 'enabled',
+       description: 'Enable WebGPU renderer for WASM builds')
+
+option('simd_support',
+       type: 'boolean',
+       value: true,
+       description: 'Enable SIMD optimizations for WASM builds')
+
+option('threading_support',
+       type: 'boolean',
+       value: true,
+       description: 'Enable threading support for WASM builds')
+
 option('android-runtime',
        type: 'feature',
        value: 'enabled',
