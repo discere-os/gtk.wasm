@@ -1060,6 +1060,10 @@ if host_machine.system() != 'windows'
 endif
 
 
+# WASM wrappers (MAIN + SIDE) for demos/tests and dynamic linking
+subdir('wasm')
+
+
 #### Summary ####
 
 summary('Display backends', enabled_backends, section: 'Components')
