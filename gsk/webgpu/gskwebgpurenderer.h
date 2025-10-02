@@ -20,7 +20,7 @@
 #include <gdk/gdk.h>
 #include <gsk/gskrenderer.h>
 #include <emscripten/emscripten.h>
-#include <emscripten/html5_webgpu.h>
+#include <webgpu/webgpu.h>
 
 G_BEGIN_DECLS
 

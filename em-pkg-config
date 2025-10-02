@@ -1,0 +1,51 @@
+#!/bin/bash
+
+# Emscripten pkg-config wrapper
+# Routes pkg-config requests to proper locations for cross-compilation
+# Aggressive local library prioritization for WASM builds
+
+export PKG_CONFIG_PATH="$(pwd)/install/lib/pkgconfig:/home/linuxbrew/.linuxbrew/lib/pkgconfig:/home/linuxbrew/.linuxbrew/share/pkgconfig"
+export PKG_CONFIG_LIBDIR="$(pwd)/install/lib/pkgconfig:/home/linuxbrew/.linuxbrew/lib/pkgconfig:/home/linuxbrew/.linuxbrew/share/pkgconfig"
+
+# Run pkg-config and post-process the output to prioritize local libraries
+result=$(/home/linuxbrew/.linuxbrew/bin/pkg-config "$@")
+exit_code=$?
+
+# Filter system paths for both --libs and --cflags to respect nostdinc
+if [[ "$*" == *"--libs"* ]]; then
+    # Replace system library paths with local paths for our built libraries
+    result=$(echo "$result" | sed 's|-L/home/linuxbrew/\.linuxbrew/[^[:space:]]*/lib||g')
+    result=$(echo "$result" | sed 's|-L/home/linuxbrew/\.linuxbrew/[^[:space:]]*/Cellar/[^[:space:]]*/lib||g')
+
+    # Convert specific libraries to local static libraries if they exist
+    if [[ -f "$(pwd)/install/lib/libz.a" ]]; then
+        result=$(echo "$result" | sed "s|-lz|$(pwd)/install/lib/libz.a|g")
+    fi
+    if [[ -f "$(pwd)/install/lib/libpng.a" ]]; then
+        result=$(echo "$result" | sed "s|-lpng|$(pwd)/install/lib/libpng.a|g")
+    fi
+
+    # For SIDE_MODULE builds, remove system library dependencies that will be provided by host
+    # These should be dynamically loaded or provided by the main module
+    result=$(echo "$result" | sed 's/-lbz2//g')        # bzip2 - provided by system
+    result=$(echo "$result" | sed 's/-lharfbuzz//g')   # harfbuzz - will be built separately
+    result=$(echo "$result" | sed 's/-lbrotlidec//g')  # brotli - provided by system
+
+    # Ensure our local lib directory is first
+    result="-L$(pwd)/install/lib $result"
+    # Clean up multiple spaces and leading/trailing spaces
+    result=$(echo "$result" | sed 's/  */ /g' | sed 's/^ *//' | sed 's/ *$//')
+fi
+
+# Filter system include paths for --cflags to respect nostdinc compilation
+if [[ "$*" == *"--cflags"* ]]; then
+    # Remove system include paths that conflict with nostdinc cross-compilation
+    result=$(echo "$result" | sed 's|-I/home/linuxbrew/\.linuxbrew/[^[:space:]]*||g')
+
+    # Only keep local install includes for cross-compilation
+    # This prevents circular dependencies when building harfbuzz with freetype
+    result=$(echo "$result" | sed 's/  */ /g' | sed 's/^ *//' | sed 's/ *$//')
+fi
+
+echo "$result"
+exit $exit_code

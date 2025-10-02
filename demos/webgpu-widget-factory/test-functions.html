@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test New Functions</title>
+    <style>
+        body {
+            font-family: monospace;
+            padding: 20px;
+            background: #1a1a1a;
+            color: #00ff00;
+        }
+        .test-result {
+            margin: 10px 0;
+            padding: 10px;
+            border: 1px solid #333;
+            background: #222;
+        }
+        .success { border-color: #00ff00; }
+        .error { border-color: #ff0000; color: #ff0000; }
+        button {
+            padding: 10px 20px;
+            margin: 5px;
+            background: #333;
+            color: #00ff00;
+            border: 1px solid #00ff00;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #00ff00;
+            color: #000;
+        }
+    </style>
+</head>
+<body>
+    <h1>GTK WebGPU Function Test</h1>
+    <div id="status">Loading WASM module...</div>
+
+    <div id="controls" style="display: none;">
+        <button onclick="testStressTest()">Test Stress Test Function</button>
+        <button onclick="testBenchmark()">Test Benchmark Function</button>
+    </div>
+
+    <div id="results"></div>
+
+    <script type="module">
+        let wasmModule = null;
+
+        async function loadModule() {
+            try {
+                const moduleFactory = (await import('./gtk-webgpu-main.js')).default;
+                const wasmResponse = await fetch('./gtk-webgpu-main.wasm');
+                const wasmBinary = await wasmResponse.arrayBuffer();
+
+                wasmModule = await moduleFactory({
+                    wasmBinary,
+                    print: (text) => addResult(`[WASM] ${text}`, 'success'),
+                    printErr: (text) => addResult(`[WASM Error] ${text}`, 'error')
+                });
+
+                document.getElementById('status').textContent = 'WASM module loaded successfully!';
+                document.getElementById('controls').style.display = 'block';
+
+                // Test that functions exist
+                testFunctionAvailability();
+
+            } catch (error) {
+                addResult(`Failed to load WASM module: ${error.message}`, 'error');
+            }
+        }
+
+        function testFunctionAvailability() {
+            const functions = ['_stress_test_widgets', '_webgpu_factory_run_benchmark', '_main', '_init_webgpu'];
+
+            for (const func of functions) {
+                if (wasmModule[func]) {
+                    addResult(`✅ Function ${func} is available`, 'success');
+                } else {
+                    addResult(`❌ Function ${func} is NOT available`, 'error');
+                }
+            }
+        }
+
+        window.testStressTest = function() {
+            if (!wasmModule || !wasmModule._stress_test_widgets) {
+                addResult('❌ Stress test function not available', 'error');
+                return;
+            }
+
+            addResult('🧪 Running stress test...', 'success');
+            try {
+                wasmModule._stress_test_widgets();
+                addResult('✅ Stress test completed successfully!', 'success');
+            } catch (error) {
+                addResult(`❌ Stress test failed: ${error.message}`, 'error');
+            }
+        };
+
+        window.testBenchmark = function() {
+            if (!wasmModule || !wasmModule._webgpu_factory_run_benchmark) {
+                addResult('❌ Benchmark function not available', 'error');
+                return;
+            }
+
+            addResult('📈 Running 3-second benchmark...', 'success');
+            try {
+                wasmModule._webgpu_factory_run_benchmark(3);
+                addResult('✅ Benchmark completed successfully!', 'success');
+            } catch (error) {
+                addResult(`❌ Benchmark failed: ${error.message}`, 'error');
+            }
+        };
+
+        function addResult(message, type) {
+            const resultsDiv = document.getElementById('results');
+            const resultDiv = document.createElement('div');
+            resultDiv.className = `test-result ${type}`;
+            resultDiv.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            resultsDiv.appendChild(resultDiv);
+            resultsDiv.scrollTop = resultsDiv.scrollHeight;
+            console.log(message);
+        }
+
+        // Start loading
+        loadModule();
+    </script>
+</body>
+</html>

@@ -75,6 +75,10 @@ gsk_private_sources = files([
   'gpu/gskgputextureop.c',
   'gpu/gskgpuutils.c',
   'gpu/gskgpuuploadop.c',
+  'gpu/gskwebgpubuffer.c',
+  'gpu/gskwebgpudevice.c',
+  'gpu/gskwebgpuframe.c',
+  'gpu/gskwebgpuimage.c',
 ])
 
 gsk_f16c_sources = files([

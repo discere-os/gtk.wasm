@@ -27,10 +27,10 @@ webgpu_c_args = [
   '-DGSK_WEBGPU_ENABLED',
 ]
 
-# Add Emscripten WebGPU support with comprehensive shader preloading
+# Add Dawn WebGPU support with comprehensive shader preloading
 if get_option('webgpu-renderer').enabled()
   webgpu_c_args += [
-    '-sUSE_WEBGPU=1',
+    '--use-port=emdawnwebgpu',
     '-sASYNCIFY',
     '--preload-file=@0@/shaders@/shaders'.format(meson.current_source_dir()),
     '-sALLOW_MEMORY_GROWTH=1',

@@ -27,7 +27,7 @@
 #include "gskdebugprivate.h"
 
 #include <emscripten/emscripten.h>
-#include <emscripten/html5_webgpu.h>
+#include <webgpu/webgpu.h>
 
 struct _GskWebGPURendererPrivate
 {

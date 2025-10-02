@@ -19,7 +19,7 @@
 
 #include "gskwebgpurenderer.h"
 #include "gskrendernode.h"
-#include <emscripten/html5_webgpu.h>
+#include <webgpu/webgpu.h>
 
 G_BEGIN_DECLS
 

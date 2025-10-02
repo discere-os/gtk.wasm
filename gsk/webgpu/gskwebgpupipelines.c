@@ -8,55 +8,70 @@
 #include "gskwebgpupipelines.h"
 #include "gskwebgpushaders.h"
 #include "gskwebgpudevice.h"
-#include <emscripten/html5_webgpu.h>
+#include <webgpu/webgpu.h>
+#include <glib.h>
+#include <stdbool.h>
 
-struct _GskWebGPUPipelineManager
+struct _GskWebGPUPipelines
 {
   GObject parent_instance;
-  
+
   WGPUDevice device;
-  
+
   // Pipeline caches (matching desktop GPU renderer architecture)
   GHashTable *render_pipelines;     // Cache for render pipelines
-  GHashTable *compute_pipelines;    // Cache for compute pipelines  
+  GHashTable *compute_pipelines;    // Cache for compute pipelines
   GHashTable *shader_modules;       // Cache for compiled shader modules
   GHashTable *bind_group_layouts;   // Cache for bind group layouts
-  
+
   // Resource management
   GPtrArray *active_pipelines;      // Track active pipelines for cleanup
-  
+
   // Performance tracking
   guint64 pipeline_cache_hits;
   guint64 pipeline_cache_misses;
 };
 
-G_DEFINE_TYPE (GskWebGPUPipelineManager, gsk_webgpu_pipeline_manager, G_TYPE_OBJECT)
+// Forward declarations
+static void gsk_webgpu_pipelines_init (GskWebGPUPipelines *self);
+static void gsk_webgpu_pipelines_class_init (GskWebGPUPipelinesClass *klass);
+static void gsk_webgpu_pipelines_gobject_init (GskWebGPUPipelines *self);
+
+// Use standard G_DEFINE_TYPE
+G_DEFINE_TYPE (GskWebGPUPipelines, gsk_webgpu_pipelines, G_TYPE_OBJECT)
+
+// Implement GObject init function
+static void
+gsk_webgpu_pipelines_init (GskWebGPUPipelines *self)
+{
+  gsk_webgpu_pipelines_gobject_init (self);
+}
 
 static void
-gsk_webgpu_pipeline_manager_finalize (GObject *object)
+gsk_webgpu_pipelines_finalize (GObject *object)
 {
-  GskWebGPUPipelineManager *self = GSK_WEBGPU_PIPELINE_MANAGER (object);
-  
+  GskWebGPUPipelines *self = GSK_WEBGPU_PIPELINES (object);
+
   // Clean up caches
   g_hash_table_destroy (self->render_pipelines);
   g_hash_table_destroy (self->compute_pipelines);
   g_hash_table_destroy (self->shader_modules);
   g_hash_table_destroy (self->bind_group_layouts);
-  
+
   g_ptr_array_unref (self->active_pipelines);
-  
-  G_OBJECT_CLASS (gsk_webgpu_pipeline_manager_parent_class)->finalize (object);
+
+  G_OBJECT_CLASS (gsk_webgpu_pipelines_parent_class)->finalize (object);
 }
 
 static void
-gsk_webgpu_pipeline_manager_class_init (GskWebGPUPipelineManagerClass *klass)
+gsk_webgpu_pipelines_class_init (GskWebGPUPipelinesClass *klass)
 {
   GObjectClass *object_class = G_OBJECT_CLASS (klass);
-  object_class->finalize = gsk_webgpu_pipeline_manager_finalize;
+  object_class->finalize = gsk_webgpu_pipelines_finalize;
 }
 
 static void
-gsk_webgpu_pipeline_manager_init (GskWebGPUPipelineManager *self)
+gsk_webgpu_pipelines_gobject_init (GskWebGPUPipelines *self)
 {
   // Initialize hash tables with proper key/value destruction
   self->render_pipelines = g_hash_table_new_full (g_str_hash, g_str_equal,
@@ -67,33 +82,33 @@ gsk_webgpu_pipeline_manager_init (GskWebGPUPipelineManager *self)
                                                  g_free, (GDestroyNotify) wgpuShaderModuleRelease);
   self->bind_group_layouts = g_hash_table_new_full (g_str_hash, g_str_equal,
                                                      g_free, (GDestroyNotify) wgpuBindGroupLayoutRelease);
-  
+
   self->active_pipelines = g_ptr_array_new ();
-  
+
   self->pipeline_cache_hits = 0;
   self->pipeline_cache_misses = 0;
 }
 
-GskWebGPUPipelineManager *
-gsk_webgpu_pipeline_manager_new (WGPUDevice device)
+GskWebGPUPipelines *
+gsk_webgpu_pipelines_new (GskWebGPUDevice *device)
 {
-  GskWebGPUPipelineManager *self;
-  
-  g_return_val_if_fail (device != NULL, NULL);
-  
-  self = g_object_new (GSK_TYPE_WEBGPU_PIPELINE_MANAGER, NULL);
-  self->device = device;
-  
+  GskWebGPUPipelines *self;
+
+  g_return_val_if_fail (GSK_IS_WEBGPU_DEVICE (device), NULL);
+
+  self = g_object_new (GSK_TYPE_WEBGPU_PIPELINES, NULL);
+  self->device = gsk_webgpu_device_get_device (device);
+
   return self;
 }
 
 // Create shader module with caching
 WGPUShaderModule
-gsk_webgpu_pipeline_manager_create_shader_module (GskWebGPUPipelineManager *self,
+gsk_webgpu_pipelines_create_shader_module (GskWebGPUPipelines *self,
                                                    const char               *shader_name,
                                                    const char               *entry_point)
 {
-  g_return_val_if_fail (GSK_IS_WEBGPU_PIPELINE_MANAGER (self), NULL);
+  g_return_val_if_fail (GSK_IS_WEBGPU_PIPELINES (self), NULL);
   g_return_val_if_fail (shader_name != NULL, NULL);
   
   // Create cache key
@@ -118,12 +133,18 @@ gsk_webgpu_pipeline_manager_create_shader_module (GskWebGPUPipelineManager *self
     }
   
   // Create shader module descriptor
+  // Dawn API uses chained WGSL source structure
+  WGPUShaderSourceWGSL wgsl_source = {
+    .chain = {
+      .next = NULL,
+      .sType = WGPUSType_ShaderSourceWGSL
+    },
+    .code = { .data = shader_source, .length = strlen(shader_source) }
+  };
+
   WGPUShaderModuleDescriptor descriptor = {
-    .label = cache_key,
-    .code = {
-      .tag = WGPUShaderSourceType_WGSL,
-      .wgsl = shader_source
-    }
+    .nextInChain = &wgsl_source.chain,
+    .label = { .data = cache_key, .length = cache_key ? strlen(cache_key) : 0 }
   };
   
   // Create and cache shader module
@@ -145,14 +166,14 @@ gsk_webgpu_pipeline_manager_create_shader_module (GskWebGPUPipelineManager *self
 
 // Create render pipeline with comprehensive configuration
 WGPURenderPipeline
-gsk_webgpu_pipeline_manager_create_render_pipeline (GskWebGPUPipelineManager *self,
+gsk_webgpu_pipelines_create_render_pipeline (GskWebGPUPipelines *self,
                                                      const char               *vertex_shader,
                                                      const char               *fragment_shader,
                                                      WGPUTextureFormat         color_format,
                                                      WGPUTextureFormat         depth_format,
                                                      GskWebGPUPipelineFlags    flags)
 {
-  g_return_val_if_fail (GSK_IS_WEBGPU_PIPELINE_MANAGER (self), NULL);
+  g_return_val_if_fail (GSK_IS_WEBGPU_PIPELINES (self), NULL);
   
   // Create comprehensive cache key including all parameters
   char *cache_key = g_strdup_printf ("%s+%s:%d:%d:0x%x", 
@@ -169,8 +190,8 @@ gsk_webgpu_pipeline_manager_create_render_pipeline (GskWebGPUPipelineManager *se
     }
   
   // Create shader modules
-  WGPUShaderModule vs_module = gsk_webgpu_pipeline_manager_create_shader_module (self, vertex_shader, "vs_main");
-  WGPUShaderModule fs_module = gsk_webgpu_pipeline_manager_create_shader_module (self, fragment_shader, "fs_main");
+  WGPUShaderModule vs_module = gsk_webgpu_pipelines_create_shader_module (self, vertex_shader, "vs_main");
+  WGPUShaderModule fs_module = gsk_webgpu_pipelines_create_shader_module (self, fragment_shader, "fs_main");
   
   if (!vs_module || !fs_module)
     {
@@ -267,11 +288,11 @@ gsk_webgpu_pipeline_manager_create_render_pipeline (GskWebGPUPipelineManager *se
 
 // Get pipeline cache statistics
 void
-gsk_webgpu_pipeline_manager_get_stats (GskWebGPUPipelineManager *self,
+gsk_webgpu_pipelines_get_stats (GskWebGPUPipelines *self,
                                         guint64                  *cache_hits,
                                         guint64                  *cache_misses)
 {
-  g_return_if_fail (GSK_IS_WEBGPU_PIPELINE_MANAGER (self));
+  g_return_if_fail (GSK_IS_WEBGPU_PIPELINES (self));
   
   if (cache_hits)
     *cache_hits = self->pipeline_cache_hits;

@@ -42,3 +42,9 @@ examples/webgpu-shaders/
 emsdk/
 emsdk_env.sh
 .emscripten_cache/
+
+# Build logs and artifacts
+*.log
+*.o
+a.out.js
+gtk-webgpu-main.js

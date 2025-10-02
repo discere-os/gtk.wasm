@@ -27,7 +27,7 @@ BASE_CFLAGS = -std=c11 -Wall -Wextra
 BASE_LDFLAGS = -s WASM=1 -s EXPORTED_RUNTIME_METHODS='["ccall","cwrap"]'
 
 # WebGPU specific flags
-WEBGPU_FLAGS = -sUSE_WEBGPU=1 -sASYNCIFY -sASYNCIFY_STACK_SIZE=16384
+WEBGPU_FLAGS = --use-port=emdawnwebgpu -sASYNCIFY -sASYNCIFY_STACK_SIZE=16384
 
 # Build type specific flags
 ifeq ($(BUILD_TYPE),release)

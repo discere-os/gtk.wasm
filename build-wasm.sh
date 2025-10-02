@@ -101,7 +101,7 @@ setup_environment() {
     
     # Threading support
     if [[ "$FEATURES" == *"threading"* ]] || [[ "$FEATURES" == "standard" ]] || [[ "$FEATURES" == "full" ]]; then
-        export CFLAGS="$CFLAGS -pthread -sPTHREAD_POOL_SIZE=navigator.hardwareConcurrency"
+        export CFLAGS="$CFLAGS -pthread"
         export LDFLAGS="$LDFLAGS -pthread -sPTHREAD_POOL_SIZE=navigator.hardwareConcurrency -sPROXY_TO_PTHREAD"
         log "Threading support enabled"
     fi
@@ -115,8 +115,8 @@ setup_environment() {
     
     # WebGPU support flags
     if [[ "$RENDERER" == "webgpu" ]] || [[ "$RENDERER" == "hybrid" ]]; then
-        export CFLAGS="$CFLAGS -DGTK_ENABLE_WEBGPU=1 -sUSE_WEBGPU=1 -sASYNCIFY"
-        export LDFLAGS="$LDFLAGS -sUSE_WEBGPU=1 -sASYNCIFY -sEXPORTED_FUNCTIONS=_main,_malloc,_free -sEXPORTED_RUNTIME_METHODS=ccall,cwrap,getValue,setValue"
+        export CFLAGS="$CFLAGS -DGTK_ENABLE_WEBGPU=1"
+        export LDFLAGS="$LDFLAGS --use-port=emdawnwebgpu -sASYNCIFY -sEXPORTED_FUNCTIONS=_main,_malloc,_free -sEXPORTED_RUNTIME_METHODS=ccall,cwrap,getValue,setValue"
         log "WebGPU renderer enabled"
         
         # Add WebGPU compute shader support

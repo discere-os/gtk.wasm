@@ -6,7 +6,7 @@
 
 #include <emscripten/emscripten.h>
 #include <emscripten/html5.h>
-#include <emscripten/html5_webgpu.h>
+#include <webgpu/webgpu.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

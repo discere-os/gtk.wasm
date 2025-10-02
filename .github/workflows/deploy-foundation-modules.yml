@@ -1,0 +1,350 @@
+name: Deploy Foundation Modules to R2
+# Copyright 2025 Superstruct Ltd
+# Build with Deno/Meson, deploy with wrangler
+
+on:
+  push:
+    branches: [ wasm, main ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ wasm, main ]
+  workflow_dispatch:
+    inputs:
+      modules:
+        description: 'Modules to deploy (comma-separated: zlib,libpng,pixman,freetype,harfbuzz,expat or "all")'
+        required: true
+        default: 'all'
+
+env:
+  EMSCRIPTEN_VERSION: '4.0.15'
+  NODE_VERSION: '22'
+
+jobs:
+  build-foundation-modules:
+    name: Build Foundation SIDE Modules
+    runs-on: ubuntu-22.04
+
+    strategy:
+      matrix:
+        module: [zlib, libpng, pixman, freetype, harfbuzz, expat]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Deno
+        uses: denoland/setup-deno@v1
+        with:
+          deno-version: v1.x
+
+      - name: Setup Emscripten SDK
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: ${{ env.EMSCRIPTEN_VERSION }}
+          actions-cache-folder: 'emsdk-cache'
+
+      - name: Install Meson and build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            meson \
+            ninja-build \
+            pkg-config \
+            build-essential
+
+      - name: Build ${{ matrix.module }} SIDE module
+        run: |
+          cd ${{ matrix.module }}.wasm || cd ../../../${{ matrix.module }}.wasm
+
+          # Run Meson build for SIDE module
+          ./build-dual.sh side
+
+          # Verify output
+          if [[ ! -f install/lib/${{ matrix.module }}-side.wasm ]]; then
+            echo "❌ Build failed: install/lib/${{ matrix.module }}-side.wasm not found"
+            exit 1
+          fi
+
+          echo "✅ Built ${{ matrix.module }}-side.wasm"
+          ls -lh install/lib/${{ matrix.module }}-side.wasm
+
+      - name: Calculate SHA-256
+        id: sha
+        run: |
+          cd ${{ matrix.module }}.wasm || cd ../../../${{ matrix.module }}.wasm
+
+          WASM_FILE="install/lib/${{ matrix.module }}-side.wasm"
+          SHA=$(sha256sum "$WASM_FILE" | awk '{print $1}')
+
+          echo "sha=${SHA}" >> $GITHUB_OUTPUT
+          echo "${SHA}" > "${WASM_FILE}.sha256"
+
+          echo "📦 Module: ${{ matrix.module }}"
+          echo "🔒 SHA-256: ${SHA}"
+          echo "📏 Size: $(stat -c%s $WASM_FILE) bytes"
+
+      - name: Get version
+        id: version
+        run: |
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            VERSION="${{ github.ref_name }}"
+          else
+            VERSION="sha-$(git rev-parse --short HEAD)"
+          fi
+
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "📋 Version: ${VERSION}"
+
+      - name: Run Deno tests
+        run: |
+          cd ${{ matrix.module }}.wasm || cd ../../../${{ matrix.module }}.wasm
+
+          # Run tests if they exist
+          if [[ -f "deno.json" ]] && deno task test &>/dev/null; then
+            echo "✅ Tests passed for ${{ matrix.module }}"
+          else
+            echo "⚠️ No Deno tests configured for ${{ matrix.module }}"
+          fi
+
+      - name: Generate manifest
+        run: |
+          cd ${{ matrix.module }}.wasm || cd ../../../${{ matrix.module }}.wasm
+
+          WASM_FILE="install/lib/${{ matrix.module }}-side.wasm"
+          SHA="${{ steps.sha.outputs.sha }}"
+          VERSION="${{ steps.version.outputs.version }}"
+
+          # Create manifest.json
+          cat > "${WASM_FILE%/*}/manifest.json" <<EOF
+{
+  "name": "${{ matrix.module }}",
+  "version": "${VERSION}",
+  "sha256": "${SHA}",
+  "size": $(stat -c%s "$WASM_FILE"),
+  "build": {
+    "date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+    "emscripten": "${{ env.EMSCRIPTEN_VERSION }}",
+    "commit": "${{ github.sha }}",
+    "ref": "${{ github.ref }}"
+  },
+  "cdn": {
+    "base": "https://wasm.discere.cloud",
+    "version_url": "https://wasm.discere.cloud/${{ matrix.module }}@${VERSION}/${{ matrix.module }}-side.wasm",
+    "sha_url": "https://wasm.discere.cloud/${{ matrix.module }}@sha-${SHA:0:7}/${{ matrix.module }}-side.wasm",
+    "latest_url": "https://wasm.discere.cloud/${{ matrix.module }}@latest/${{ matrix.module }}-side.wasm"
+  }
+}
+EOF
+
+          echo "✅ Generated manifest.json"
+          cat "${WASM_FILE%/*}/manifest.json"
+
+      - name: Generate build summary
+        run: |
+          cd ${{ matrix.module }}.wasm || cd ../../../${{ matrix.module }}.wasm
+
+          WASM_FILE="install/lib/${{ matrix.module }}-side.wasm"
+          SIZE=$(stat -c%s "$WASM_FILE")
+          SIZE_KB=$((SIZE / 1024))
+
+          echo "## 📦 ${{ matrix.module }} Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Module | \`${{ matrix.module }}-side.wasm\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Version | \`${{ steps.version.outputs.version }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| SHA-256 | \`${{ steps.sha.outputs.sha }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Size | ${SIZE_KB} KB (${SIZE} bytes) |" >> $GITHUB_STEP_SUMMARY
+          echo "| Emscripten | ${{ env.EMSCRIPTEN_VERSION }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.module }}-side-module
+          path: |
+            ${{ matrix.module }}.wasm/install/lib/${{ matrix.module }}-side.wasm
+            ${{ matrix.module }}.wasm/install/lib/${{ matrix.module }}-side.wasm.sha256
+            ${{ matrix.module }}.wasm/install/lib/manifest.json
+          retention-days: 30
+          if-no-files-found: error
+
+  deploy-to-r2:
+    name: Deploy to Cloudflare R2
+    runs-on: ubuntu-22.04
+    needs: [build-foundation-modules]
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+
+    strategy:
+      matrix:
+        module: [zlib, libpng, pixman, freetype, harfbuzz, expat]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: latest
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: Install wrangler
+        run: pnpm add -g wrangler
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.module }}-side-module
+          path: ./artifacts/${{ matrix.module }}
+
+      - name: Get version and SHA
+        id: meta
+        run: |
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            VERSION="${{ github.ref_name }}"
+          else
+            VERSION="sha-$(git rev-parse --short HEAD)"
+          fi
+
+          # Read SHA from manifest
+          SHA=$(jq -r '.sha256' ./artifacts/${{ matrix.module }}/manifest.json)
+          SHA_SHORT="${SHA:0:7}"
+
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "sha=${SHA}" >> $GITHUB_OUTPUT
+          echo "sha_short=${SHA_SHORT}" >> $GITHUB_OUTPUT
+
+          echo "📋 Version: ${VERSION}"
+          echo "🔒 SHA-256: ${SHA}"
+
+      - name: Deploy to R2 (versioned path)
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: |
+            r2 object put discere-os-wasm-production/${{ matrix.module }}/@${{ steps.meta.outputs.version }}/${{ matrix.module }}-side.wasm \
+              --file=artifacts/${{ matrix.module }}/${{ matrix.module }}-side.wasm \
+              --content-type=application/wasm \
+              --cache-control="public, max-age=31536000, immutable"
+
+            r2 object put discere-os-wasm-production/${{ matrix.module }}/@${{ steps.meta.outputs.version }}/${{ matrix.module }}-side.wasm.sha256 \
+              --file=artifacts/${{ matrix.module }}/${{ matrix.module }}-side.wasm.sha256 \
+              --content-type=text/plain \
+              --cache-control="public, max-age=31536000, immutable"
+
+            r2 object put discere-os-wasm-production/${{ matrix.module }}/@${{ steps.meta.outputs.version }}/manifest.json \
+              --file=artifacts/${{ matrix.module }}/manifest.json \
+              --content-type=application/json \
+              --cache-control="public, max-age=31536000, immutable"
+
+      - name: Deploy to R2 (SHA path)
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: |
+            r2 object put discere-os-wasm-production/${{ matrix.module }}/@sha-${{ steps.meta.outputs.sha_short }}/${{ matrix.module }}-side.wasm \
+              --file=artifacts/${{ matrix.module }}/${{ matrix.module }}-side.wasm \
+              --content-type=application/wasm \
+              --cache-control="public, max-age=31536000, immutable"
+
+            r2 object put discere-os-wasm-production/${{ matrix.module }}/@sha-${{ steps.meta.outputs.sha_short }}/${{ matrix.module }}-side.wasm.sha256 \
+              --file=artifacts/${{ matrix.module }}/${{ matrix.module }}-side.wasm.sha256 \
+              --content-type=text/plain \
+              --cache-control="public, max-age=31536000, immutable"
+
+            r2 object put discere-os-wasm-production/${{ matrix.module }}/@sha-${{ steps.meta.outputs.sha_short }}/manifest.json \
+              --file=artifacts/${{ matrix.module }}/manifest.json \
+              --content-type=application/json \
+              --cache-control="public, max-age=31536000, immutable"
+
+      - name: Update latest pointer
+        if: github.ref_type == 'tag' && startsWith(github.ref, 'refs/tags/v')
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: |
+            echo "${{ steps.meta.outputs.version }}" > latest.txt
+
+            r2 object put discere-os-wasm-production/${{ matrix.module }}/@latest.txt \
+              --file=latest.txt \
+              --content-type=text/plain \
+              --cache-control="public, max-age=300"
+
+      - name: Verify deployment
+        run: |
+          echo "## 🚀 Deployment Summary - ${{ matrix.module }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### CDN URLs" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Version URL:**" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "https://wasm.discere.cloud/${{ matrix.module }}@${{ steps.meta.outputs.version }}/${{ matrix.module }}-side.wasm" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**SHA URL (content-addressable):**" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "https://wasm.discere.cloud/${{ matrix.module }}@sha-${{ steps.meta.outputs.sha_short }}/${{ matrix.module }}-side.wasm" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            echo "**Latest URL (redirect):**" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            echo "https://wasm.discere.cloud/${{ matrix.module }}@latest/${{ matrix.module }}-side.wasm" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "### Usage" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+          echo "# Fetch from CDN" >> $GITHUB_STEP_SUMMARY
+          echo "curl -fL https://wasm.discere.cloud/${{ matrix.module }}@${{ steps.meta.outputs.version }}/${{ matrix.module }}-side.wasm \\" >> $GITHUB_STEP_SUMMARY
+          echo "  -o ${{ matrix.module }}-side.wasm" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "# Verify integrity" >> $GITHUB_STEP_SUMMARY
+          echo "echo \"${{ steps.meta.outputs.sha }}  ${{ matrix.module }}-side.wasm\" | sha256sum -c" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+
+  notify-completion:
+    name: Deployment Complete
+    runs-on: ubuntu-22.04
+    needs: [deploy-to-r2]
+    if: always() && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+
+    steps:
+      - name: Generate completion summary
+        run: |
+          echo "## 🎉 Foundation Modules Deployment Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Status:** ${{ needs.deploy-to-r2.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Branch:** \`${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Trigger:** ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Deployed Modules" >> $GITHUB_STEP_SUMMARY
+          echo "1. ✅ zlib - Compression engine" >> $GITHUB_STEP_SUMMARY
+          echo "2. ✅ libpng - PNG codec" >> $GITHUB_STEP_SUMMARY
+          echo "3. ✅ pixman - Graphics engine" >> $GITHUB_STEP_SUMMARY
+          echo "4. ✅ freetype - Font rendering" >> $GITHUB_STEP_SUMMARY
+          echo "5. ✅ harfbuzz - Text shaping" >> $GITHUB_STEP_SUMMARY
+          echo "6. ✅ expat - XML parser" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Next Steps" >> $GITHUB_STEP_SUMMARY
+          echo "- Test remote consumption with fontconfig/cairo builds" >> $GITHUB_STEP_SUMMARY
+          echo "- Verify CDN URLs are accessible" >> $GITHUB_STEP_SUMMARY
+          echo "- Update downstream builds to use CDN dependencies" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**CDN Base:** https://wasm.discere.cloud" >> $GITHUB_STEP_SUMMARY

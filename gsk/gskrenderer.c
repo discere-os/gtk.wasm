@@ -46,6 +46,10 @@
 #include "gdk/gdkvulkancontextprivate.h"
 #include "gdk/gdkdisplayprivate.h"
 
+#ifdef __EMSCRIPTEN__
+#include "webgpu/gskwebgpurenderer.h"
+#endif
+
 #include <graphene-gobject.h>
 #include <cairo-gobject.h>
 #include <gdk/gdk.h>
@@ -507,6 +511,10 @@ get_renderer_for_name (const char *renderer_name)
   else if (g_ascii_strcasecmp (renderer_name, "vulkan") == 0)
     return GSK_TYPE_VULKAN_RENDERER;
 #endif
+#ifdef __EMSCRIPTEN__
+  else if (g_ascii_strcasecmp (renderer_name, "webgpu") == 0)
+    return GSK_TYPE_WEBGPU_RENDERER;
+#endif
   else if (g_ascii_strcasecmp (renderer_name, "help") == 0)
     {
       gdk_help_message ("Supported arguments for GSK_RENDERER environment variable:\n"
@@ -522,6 +530,9 @@ get_renderer_for_name (const char *renderer_name)
                         "    vulkan - Use the Vulkan renderer\n"
 #else
                         "    vulkan - Disabled during GTK build\n"
+#endif
+#ifdef __EMSCRIPTEN__
+                        "    webgpu - Use the WebGPU renderer (WASM only)\n"
 #endif
                         "      help - Print this help\n\n"
                         "The old OpenGL renderer has been removed in GTK 4.18, so using\n"
@@ -700,6 +711,42 @@ get_renderer_for_vulkan_fallback (GdkSurface *surface)
 }
 #endif
 
+#ifdef __EMSCRIPTEN__
+static gboolean
+webgpu_supported_platform (GdkSurface *surface,
+                           gboolean    as_fallback)
+{
+  /* Check WebGPU availability */
+  if (!gsk_webgpu_renderer_is_available())
+    {
+      GSK_DEBUG (RENDERER, "Not using WebGPU%s: WebGPU not available",
+                 as_fallback ? " as fallback" : "");
+      return FALSE;
+    }
+
+  /* WebGPU requires Emscripten environment */
+  return TRUE;
+}
+
+static GType
+get_renderer_for_webgpu (GdkSurface *surface)
+{
+  if (!webgpu_supported_platform (surface, FALSE))
+    return G_TYPE_INVALID;
+
+  return GSK_TYPE_WEBGPU_RENDERER;
+}
+
+static GType
+get_renderer_for_webgpu_fallback (GdkSurface *surface)
+{
+  if (!webgpu_supported_platform (surface, TRUE))
+    return G_TYPE_INVALID;
+
+  return GSK_TYPE_WEBGPU_RENDERER;
+}
+#endif
+
 static GType
 get_renderer_fallback (GdkSurface *surface)
 {
@@ -712,10 +759,16 @@ static struct {
   { get_renderer_for_display },
   { get_renderer_for_env_var },
   { get_renderer_for_backend },
+#ifdef __EMSCRIPTEN__
+  { get_renderer_for_webgpu },
+#endif
 #ifdef GDK_RENDERING_VULKAN
   { get_renderer_for_vulkan },
 #endif
   { get_renderer_for_gl },
+#ifdef __EMSCRIPTEN__
+  { get_renderer_for_webgpu_fallback },
+#endif
 #ifdef GDK_RENDERING_VULKAN
   { get_renderer_for_vulkan_fallback },
 #endif

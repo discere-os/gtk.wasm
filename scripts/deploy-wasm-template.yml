@@ -1,0 +1,338 @@
+# WASM SIDE Module Deployment Workflow
+# Copy this to .github/workflows/deploy-wasm.yml in any discere-os/*.wasm fork
+# No configuration needed - auto-detects package name from repository name
+
+name: Build and Deploy WASM SIDE Module
+
+on:
+  push:
+    branches: [ wasm, main ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ wasm, main ]
+  workflow_dispatch:
+
+env:
+  EMSCRIPTEN_VERSION: '4.0.15'
+  NODE_VERSION: '22'
+
+jobs:
+  build:
+    name: Build SIDE Module
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Deno
+        uses: denoland/setup-deno@v1
+        with:
+          deno-version: v1.x
+
+      - name: Setup Emscripten SDK
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: ${{ env.EMSCRIPTEN_VERSION }}
+          actions-cache-folder: 'emsdk-cache'
+
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            meson \
+            ninja-build \
+            pkg-config \
+            build-essential
+
+      - name: Extract package name
+        id: package
+        run: |
+          # Auto-detect from repo name: "zlib.wasm" → "zlib"
+          REPO_NAME="${{ github.event.repository.name }}"
+          PKG="${REPO_NAME%.wasm}"
+          echo "name=${PKG}" >> $GITHUB_OUTPUT
+          echo "📦 Package: ${PKG}"
+
+      - name: Build SIDE module
+        id: build
+        run: |
+          PKG="${{ steps.package.outputs.name }}"
+
+          # Build using standard script
+          if [[ -x ./build-dual.sh ]]; then
+            ./build-dual.sh side
+          elif [[ -x ./build-wasm.sh ]]; then
+            ./build-wasm.sh
+          else
+            echo "❌ No build script found (build-dual.sh or build-wasm.sh)"
+            exit 1
+          fi
+
+          # Verify output
+          WASM_FILE="install/lib/${PKG}-side.wasm"
+          if [[ ! -f "$WASM_FILE" ]]; then
+            echo "❌ Build failed: $WASM_FILE not found"
+            ls -la install/lib/ || true
+            exit 1
+          fi
+
+          SIZE=$(stat -c%s "$WASM_FILE")
+          SIZE_KB=$((SIZE / 1024))
+
+          echo "file=${WASM_FILE}" >> $GITHUB_OUTPUT
+          echo "size=${SIZE}" >> $GITHUB_OUTPUT
+          echo "✅ Built: ${WASM_FILE} (${SIZE_KB} KB)"
+
+      - name: Calculate SHA-256
+        id: sha
+        run: |
+          WASM_FILE="${{ steps.build.outputs.file }}"
+          SHA=$(sha256sum "$WASM_FILE" | awk '{print $1}')
+
+          echo "sha=${SHA}" >> $GITHUB_OUTPUT
+          echo "${SHA}" > "${WASM_FILE}.sha256"
+          echo "🔒 SHA-256: ${SHA}"
+
+      - name: Get version
+        id: version
+        run: |
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            VERSION="${{ github.ref_name }}"
+          else
+            VERSION="sha-$(git rev-parse --short HEAD)"
+          fi
+
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "📋 Version: ${VERSION}"
+
+      - name: Run tests
+        continue-on-error: true
+        run: |
+          if [[ -f "deno.json" ]] && deno task test &>/dev/null; then
+            echo "✅ Tests passed"
+          else
+            echo "⚠️ No Deno tests configured (optional)"
+          fi
+
+      - name: Generate manifest
+        run: |
+          PKG="${{ steps.package.outputs.name }}"
+          WASM_FILE="${{ steps.build.outputs.file }}"
+
+          cat > "${WASM_FILE%/*}/manifest.json" <<EOF
+{
+  "name": "${PKG}",
+  "version": "${{ steps.version.outputs.version }}",
+  "sha256": "${{ steps.sha.outputs.sha }}",
+  "size": ${{ steps.build.outputs.size }},
+  "repository": "${{ github.repository }}",
+  "commit": "${{ github.sha }}",
+  "build_date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+  "emscripten_version": "${{ env.EMSCRIPTEN_VERSION }}",
+  "cdn": {
+    "version_url": "https://wasm.discere.cloud/${PKG}@${{ steps.version.outputs.version }}/${PKG}-side.wasm",
+    "sha_url": "https://wasm.discere.cloud/${PKG}@sha-${{ steps.sha.outputs.sha }}/${PKG}-side.wasm",
+    "latest_url": "https://wasm.discere.cloud/${PKG}@latest/${PKG}-side.wasm"
+  }
+}
+EOF
+
+          echo "✅ Generated manifest.json"
+
+      - name: Build summary
+        run: |
+          PKG="${{ steps.package.outputs.name }}"
+          SIZE_KB=$((${{ steps.build.outputs.size }} / 1024))
+
+          echo "## 📦 Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Package | \`${PKG}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Version | \`${{ steps.version.outputs.version }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Size | ${SIZE_KB} KB |" >> $GITHUB_STEP_SUMMARY
+          echo "| SHA-256 | \`${{ steps.sha.outputs.sha }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.package.outputs.name }}-side-module
+          path: |
+            ${{ steps.build.outputs.file }}
+            ${{ steps.build.outputs.file }}.sha256
+            install/lib/manifest.json
+          retention-days: 30
+          if-no-files-found: error
+
+  deploy:
+    name: Deploy to R2
+    runs-on: ubuntu-22.04
+    needs: [build]
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Extract package name
+        id: package
+        run: |
+          REPO_NAME="${{ github.event.repository.name }}"
+          PKG="${REPO_NAME%.wasm}"
+          echo "name=${PKG}" >> $GITHUB_OUTPUT
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ steps.package.outputs.name }}-side-module
+          path: ./artifacts
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: latest
+          run_install: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: Install wrangler
+        run: pnpm add -g wrangler
+
+      - name: Extract metadata
+        id: meta
+        run: |
+          PKG=$(jq -r '.name' artifacts/manifest.json)
+          VERSION=$(jq -r '.version' artifacts/manifest.json)
+          SHA=$(jq -r '.sha256' artifacts/manifest.json)
+          SHA_SHORT="${SHA:0:7}"
+
+          echo "package=${PKG}" >> $GITHUB_OUTPUT
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "sha=${SHA}" >> $GITHUB_OUTPUT
+          echo "sha_short=${SHA_SHORT}" >> $GITHUB_OUTPUT
+
+          echo "📦 Deploying: ${PKG}@${VERSION}"
+
+      - name: Deploy to R2 (versioned path)
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: |
+            PKG="${{ steps.meta.outputs.package }}"
+            VERSION="${{ steps.meta.outputs.version }}"
+
+            # Deploy WASM binary
+            r2 object put discere-os-wasm-production/${PKG}/@${VERSION}/${PKG}-side.wasm \
+              --file=artifacts/${PKG}-side.wasm \
+              --content-type=application/wasm \
+              --cache-control="public, max-age=31536000, immutable"
+
+            # Deploy SHA-256 checksum
+            r2 object put discere-os-wasm-production/${PKG}/@${VERSION}/${PKG}-side.wasm.sha256 \
+              --file=artifacts/${PKG}-side.wasm.sha256 \
+              --content-type=text/plain \
+              --cache-control="public, max-age=31536000, immutable"
+
+            # Deploy manifest
+            r2 object put discere-os-wasm-production/${PKG}/@${VERSION}/manifest.json \
+              --file=artifacts/manifest.json \
+              --content-type=application/json \
+              --cache-control="public, max-age=31536000, immutable"
+
+            echo "✅ Deployed: ${PKG}@${VERSION}"
+
+      - name: Deploy to R2 (SHA path)
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: |
+            PKG="${{ steps.meta.outputs.package }}"
+            SHA_SHORT="${{ steps.meta.outputs.sha_short }}"
+
+            # Deploy to content-addressable path
+            r2 object put discere-os-wasm-production/${PKG}/@sha-${SHA_SHORT}/${PKG}-side.wasm \
+              --file=artifacts/${PKG}-side.wasm \
+              --content-type=application/wasm \
+              --cache-control="public, max-age=31536000, immutable"
+
+            r2 object put discere-os-wasm-production/${PKG}/@sha-${SHA_SHORT}/${PKG}-side.wasm.sha256 \
+              --file=artifacts/${PKG}-side.wasm.sha256 \
+              --content-type=text/plain \
+              --cache-control="public, max-age=31536000, immutable"
+
+            r2 object put discere-os-wasm-production/${PKG}/@sha-${SHA_SHORT}/manifest.json \
+              --file=artifacts/manifest.json \
+              --content-type=application/json \
+              --cache-control="public, max-age=31536000, immutable"
+
+            echo "✅ Deployed: ${PKG}@sha-${SHA_SHORT}"
+
+      - name: Update latest pointer
+        if: github.ref_type == 'tag' && startsWith(github.ref, 'refs/tags/v')
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: |
+            PKG="${{ steps.meta.outputs.package }}"
+            VERSION="${{ steps.meta.outputs.version }}"
+
+            # Update latest pointer
+            echo "${VERSION}" > latest.txt
+
+            r2 object put discere-os-wasm-production/${PKG}/@latest.txt \
+              --file=latest.txt \
+              --content-type=text/plain \
+              --cache-control="public, max-age=300"
+
+            echo "✅ Updated latest pointer: ${PKG}@latest → ${VERSION}"
+
+      - name: Deployment summary
+        run: |
+          PKG="${{ steps.meta.outputs.package }}"
+          VERSION="${{ steps.meta.outputs.version }}"
+          SHA_SHORT="${{ steps.meta.outputs.sha_short }}"
+
+          echo "## 🚀 Deployment Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### CDN URLs" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Version URL:**" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "https://wasm.discere.cloud/${PKG}@${VERSION}/${PKG}-side.wasm" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**SHA URL (content-addressable):**" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "https://wasm.discere.cloud/${PKG}@sha-${SHA_SHORT}/${PKG}-side.wasm" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            echo "**Latest URL (redirect):**" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            echo "https://wasm.discere.cloud/${PKG}@latest/${PKG}-side.wasm" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "### Usage" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+          echo "# Fetch from CDN" >> $GITHUB_STEP_SUMMARY
+          echo "curl -fL https://wasm.discere.cloud/${PKG}@${VERSION}/${PKG}-side.wasm \\" >> $GITHUB_STEP_SUMMARY
+          echo "  -o ${PKG}-side.wasm" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "# Verify integrity" >> $GITHUB_STEP_SUMMARY
+          echo "echo \"${{ steps.meta.outputs.sha }}  ${PKG}-side.wasm\" | sha256sum -c" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY

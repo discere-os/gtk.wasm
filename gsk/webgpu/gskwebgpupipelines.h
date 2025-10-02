@@ -19,7 +19,7 @@
 
 #include "gskwebgpudevice.h"
 #include <glib-object.h>
-#include <emscripten/html5_webgpu.h>
+#include <webgpu/webgpu.h>
 
 G_BEGIN_DECLS
 
@@ -77,9 +77,16 @@ typedef enum {
   GSK_WEBGPU_COMPUTE_COUNT
 } GskWebGPUComputePipelineType;
 
+typedef enum {
+  GSK_WEBGPU_PIPELINE_FLAG_DEFAULT   = 0,
+  GSK_WEBGPU_PIPELINE_FLAG_ALPHA_BLEND = (1 << 0),
+  GSK_WEBGPU_PIPELINE_FLAG_DEPTH      = (1 << 1),
+  GSK_WEBGPU_PIPELINE_FLAG_MULTIVIEW  = (1 << 2)
+} GskWebGPUPipelineFlags;
+
 GskWebGPUPipelines *gsk_webgpu_pipelines_new               (GskWebGPUDevice        *device);
 
-gboolean            gsk_webgpu_pipelines_init              (GskWebGPUPipelines     *pipelines,
+gboolean            gsk_webgpu_pipelines_initialize        (GskWebGPUPipelines     *pipelines,
                                                              WGPUTextureFormat       surface_format,
                                                              GError                **error);
 

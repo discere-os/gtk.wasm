@@ -6,7 +6,7 @@
 
 #include <gtk/gtk.h>
 #include <emscripten/emscripten.h>
-#include <emscripten/html5.h>
+#include <webgpu/webgpu.h>
 
 #ifdef GSK_WEBGPU_ENABLED
 #include <gsk/webgpu/gskwebgpurenderer.h>

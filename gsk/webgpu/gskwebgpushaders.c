@@ -19,6 +19,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <webgpu/webgpu.h>
 
 /* Load WGSL shader from embedded virtual filesystem */
 char *gsk_webgpu_load_shader_file(const char *filename) {
@@ -33,27 +34,28 @@ char *gsk_webgpu_load_shader_file(const char *filename) {
     NULL
   };
   
-  for (int i = 0; shader_paths[i]; i++) {
+  int i;
+  for (i = 0; shader_paths[i]; i++) {
     snprintf(filepath, sizeof(filepath), shader_paths[i], filename);
-    
+
     FILE *file = fopen(filepath, "r");
     if (file) {
       // Successfully found shader file
       fseek(file, 0, SEEK_END);
       long length = ftell(file);
       fseek(file, 0, SEEK_SET);
-      
+
       char *content = g_malloc(length + 1);
       size_t read_bytes = fread(content, 1, length, file);
       content[read_bytes] = '\0';
-      
+
       fclose(file);
-      
+
       g_debug("Loaded shader: %s (%ld bytes)", filepath, length);
       return content;
     }
   }
-  
+
   g_warning("Failed to load shader file: %s (tried %d locations)", filename, i);
   return NULL;
 }
@@ -546,16 +548,18 @@ gsk_webgpu_create_shader_module (WGPUDevice   device,
   g_string_append (full_source, "\n");
   g_string_append (full_source, source);
 
-  WGPUShaderModuleWGSLDescriptor wgsl_desc = {
+  // Dawn API uses chained WGSL source structure
+  WGPUShaderSourceWGSL wgsl_source = {
     .chain = {
-      .sType = WGPUSType_ShaderModuleWGSLDescriptor
+      .next = NULL,
+      .sType = WGPUSType_ShaderSourceWGSL
     },
-    .source = full_source->str
+    .code = { .data = full_source->str, .length = strlen(full_source->str) }
   };
 
   WGPUShaderModuleDescriptor module_desc = {
-    .label = label,
-    .nextInChain = &wgsl_desc.chain
+    .nextInChain = &wgsl_source.chain,
+    .label = { .data = label, .length = label ? strlen(label) : 0 }
   };
 
   WGPUShaderModule module = wgpuDeviceCreateShaderModule (device, &module_desc);

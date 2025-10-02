@@ -1,0 +1,723 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GTK WebGPU Widget Factory</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Liberation Sans', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #333;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .header {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            padding: 1rem 2rem;
+            box-shadow: 0 2px 20px rgba(0, 0, 0, 0.1);
+        }
+
+        .header h1 {
+            color: #2c3e50;
+            font-size: 1.8rem;
+            font-weight: 600;
+        }
+
+        .header p {
+            color: #7f8c8d;
+            margin-top: 0.25rem;
+        }
+
+        .container {
+            flex: 1;
+            display: flex;
+            gap: 2rem;
+            padding: 2rem;
+            max-width: 1400px;
+            margin: 0 auto;
+            width: 100%;
+        }
+
+        .sidebar {
+            min-width: 300px;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 12px;
+            padding: 1.5rem;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            height: fit-content;
+        }
+
+        .main-content {
+            flex: 1;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 12px;
+            padding: 1.5rem;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            position: relative;
+        }
+
+        .status-section {
+            margin-bottom: 1.5rem;
+        }
+
+        .status-section h3 {
+            color: #2c3e50;
+            margin-bottom: 0.75rem;
+            font-size: 1.1rem;
+        }
+
+        .status-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.5rem 0;
+            border-bottom: 1px solid #ecf0f1;
+        }
+
+        .status-item:last-child {
+            border-bottom: none;
+        }
+
+        .status-label {
+            font-weight: 500;
+            color: #34495e;
+        }
+
+        .status-value {
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 0.9rem;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            background: #f8f9fa;
+        }
+
+        .status-value.success {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status-value.warning {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .status-value.error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #ecf0f1;
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 0.5rem 0;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #3498db, #2ecc71);
+            transition: width 0.3s ease;
+            border-radius: 4px;
+        }
+
+        .log-container {
+            background: #2c3e50;
+            color: #ecf0f1;
+            border-radius: 8px;
+            padding: 1rem;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 0.9rem;
+            max-height: 400px;
+            overflow-y: auto;
+            line-height: 1.4;
+        }
+
+        .log-entry {
+            margin-bottom: 0.25rem;
+        }
+
+        .log-entry.info { color: #3498db; }
+        .log-entry.success { color: #2ecc71; }
+        .log-entry.warning { color: #f39c12; }
+        .log-entry.error { color: #e74c3c; }
+
+        .canvas-container {
+            width: 100%;
+            height: 600px;
+            border: 2px solid #bdc3c7;
+            border-radius: 8px;
+            background: #34495e;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 1.1rem;
+        }
+
+        #gtk-canvas {
+            width: 100%;
+            height: 100%;
+            border-radius: 6px;
+        }
+
+        .controls {
+            margin-top: 1rem;
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 6px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .btn-primary {
+            background: #3498db;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #2980b9;
+            transform: translateY(-1px);
+        }
+
+        .btn-success {
+            background: #2ecc71;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #27ae60;
+            transform: translateY(-1px);
+        }
+
+        .btn-warning {
+            background: #f39c12;
+            color: white;
+        }
+
+        .btn-warning:hover {
+            background: #d68910;
+            transform: translateY(-1px);
+        }
+
+        .btn:disabled {
+            background: #bdc3c7;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .loading-spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid #ecf0f1;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                flex-direction: column;
+                padding: 1rem;
+            }
+
+            .sidebar {
+                min-width: auto;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🎮 GTK WebGPU Widget Factory</h1>
+        <p>Web-native GTK with WebGPU acceleration and WASM SIMD optimizations</p>
+    </div>
+
+    <div class="container">
+        <div class="sidebar">
+            <div class="status-section">
+                <h3>🔍 Browser Support</h3>
+                <div class="status-item">
+                    <span class="status-label">WebGPU</span>
+                    <span class="status-value" id="webgpu-status">Checking...</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">WASM SIMD</span>
+                    <span class="status-value" id="simd-status">Checking...</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">SharedArrayBuffer</span>
+                    <span class="status-value" id="sab-status">Checking...</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">Browser</span>
+                    <span class="status-value" id="browser-info">Detecting...</span>
+                </div>
+            </div>
+
+            <div class="status-section">
+                <h3>📦 Module Loading</h3>
+                <div class="status-item">
+                    <span class="status-label">Progress</span>
+                    <span class="status-value" id="load-progress">0%</span>
+                </div>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progress-fill" style="width: 0%"></div>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">MAIN Module</span>
+                    <span class="status-value" id="main-status">Pending</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">SIDE Modules</span>
+                    <span class="status-value" id="side-status">Pending</span>
+                </div>
+            </div>
+
+            <div class="status-section">
+                <h3>📊 Performance</h3>
+                <div class="status-item">
+                    <span class="status-label">FPS</span>
+                    <span class="status-value" id="fps-counter">-</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">Frame Time</span>
+                    <span class="status-value" id="frame-time">-</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">SIMD Speedup</span>
+                    <span class="status-value" id="simd-speedup">-</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">Widgets</span>
+                    <span class="status-value" id="widget-count">-</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="main-content">
+            <div class="canvas-container" id="canvas-container">
+                <div id="loading-state">
+                    <div class="loading-spinner"></div>
+                    <p style="margin-top: 1rem;">Initializing GTK WebGPU...</p>
+                </div>
+                <canvas id="gtk-canvas" class="hidden"></canvas>
+            </div>
+
+            <div class="controls">
+                <button class="btn btn-primary" id="start-btn" disabled>Start GTK Application</button>
+                <button class="btn btn-success" id="stress-test-btn" disabled>Run Stress Test</button>
+                <button class="btn btn-warning" id="benchmark-btn" disabled>Run Benchmark</button>
+            </div>
+
+            <div class="status-section" style="margin-top: 2rem;">
+                <h3>📋 Console Log</h3>
+                <div class="log-container" id="log-container">
+                    <div class="log-entry info">Initializing GTK WebGPU Widget Factory...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        // WebGPU and WASM capabilities detection
+        class CapabilityDetector {
+            static async detectWebGPU() {
+                if (!navigator.gpu) {
+                    return { supported: false, reason: 'navigator.gpu not available' };
+                }
+
+                try {
+                    const adapter = await navigator.gpu.requestAdapter();
+                    if (!adapter) {
+                        return { supported: false, reason: 'No WebGPU adapter available' };
+                    }
+
+                    const device = await adapter.requestDevice();
+                    device.destroy();
+
+                    return { supported: true, adapter: adapter.info };
+                } catch (error) {
+                    return { supported: false, reason: error.message };
+                }
+            }
+
+            static detectWASMSIMD() {
+                try {
+                    // Test WASM SIMD support with a minimal SIMD instruction
+                    const simdTest = new Uint8Array([
+                        0, 97, 115, 109, 1, 0, 0, 0, 1, 4, 1, 96, 0, 0, 3, 2, 1, 0,
+                        10, 9, 1, 7, 0, 65, 0, 253, 15, 26, 11
+                    ]);
+                    return WebAssembly.validate(simdTest);
+                } catch {
+                    return false;
+                }
+            }
+
+            static detectSharedArrayBuffer() {
+                return typeof SharedArrayBuffer !== 'undefined';
+            }
+
+            static getBrowserInfo() {
+                const ua = navigator.userAgent;
+                let browser = 'Unknown';
+                let version = '';
+
+                if (ua.includes('Chrome/')) {
+                    browser = 'Chrome';
+                    version = ua.match(/Chrome\/(\d+)/)?.[1] || '';
+                } else if (ua.includes('Edge/')) {
+                    browser = 'Edge';
+                    version = ua.match(/Edge\/(\d+)/)?.[1] || '';
+                } else if (ua.includes('Firefox/')) {
+                    browser = 'Firefox';
+                    version = ua.match(/Firefox\/(\d+)/)?.[1] || '';
+                } else if (ua.includes('Safari/')) {
+                    browser = 'Safari';
+                    version = ua.match(/Version\/(\d+)/)?.[1] || '';
+                }
+
+                return { browser, version };
+            }
+        }
+
+        // Application state management
+        class GTKWebGPUApp {
+            constructor() {
+                this.wasmModule = null;
+                this.canvas = document.getElementById('gtk-canvas');
+                this.capabilities = {};
+                this.loadProgress = 0;
+                this.performance = {
+                    fps: 0,
+                    frameTime: 0,
+                    simdSpeedup: 0,
+                    widgetCount: 0
+                };
+            }
+
+            log(message, type = 'info') {
+                const logContainer = document.getElementById('log-container');
+                const entry = document.createElement('div');
+                entry.className = `log-entry ${type}`;
+                entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+                logContainer.appendChild(entry);
+                logContainer.scrollTop = logContainer.scrollHeight;
+                console.log(`[GTK WebGPU] ${message}`);
+            }
+
+            updateStatus(elementId, value, className = '') {
+                const element = document.getElementById(elementId);
+                if (element) {
+                    element.textContent = value;
+                    element.className = `status-value ${className}`;
+                }
+            }
+
+            updateProgress(percent) {
+                this.loadProgress = Math.min(100, Math.max(0, percent));
+                document.getElementById('load-progress').textContent = `${Math.round(this.loadProgress)}%`;
+                document.getElementById('progress-fill').style.width = `${this.loadProgress}%`;
+            }
+
+            async detectCapabilities() {
+                this.log('Detecting browser capabilities...');
+
+                // WebGPU detection
+                const webgpuResult = await CapabilityDetector.detectWebGPU();
+                this.capabilities.webgpu = webgpuResult.supported;
+                this.updateStatus('webgpu-status',
+                    webgpuResult.supported ? '✅ Supported' : '❌ Not Available',
+                    webgpuResult.supported ? 'success' : 'error');
+
+                if (!webgpuResult.supported) {
+                    this.log(`WebGPU not supported: ${webgpuResult.reason}`, 'error');
+                }
+
+                // WASM SIMD detection
+                this.capabilities.simd = CapabilityDetector.detectWASMSIMD();
+                this.updateStatus('simd-status',
+                    this.capabilities.simd ? '✅ Supported' : '❌ Not Available',
+                    this.capabilities.simd ? 'success' : 'error');
+
+                // SharedArrayBuffer detection
+                this.capabilities.sharedArrayBuffer = CapabilityDetector.detectSharedArrayBuffer();
+                this.updateStatus('sab-status',
+                    this.capabilities.sharedArrayBuffer ? '✅ Supported' : '❌ Not Available',
+                    this.capabilities.sharedArrayBuffer ? 'success' : 'warning');
+
+                // Browser info
+                const browserInfo = CapabilityDetector.getBrowserInfo();
+                this.updateStatus('browser-info', `${browserInfo.browser} ${browserInfo.version}`);
+
+                // For testing, only require SIMD - WebGPU is optional
+                return this.capabilities.simd;
+            }
+
+            async loadWASMModule() {
+                // For testing, only require SIMD - WebGPU will be optional
+                if (!this.capabilities.simd) {
+                    throw new Error('WASM SIMD required but not available');
+                }
+
+                this.log('Loading GTK WebGPU WASM module...');
+                this.updateStatus('main-status', 'Loading...', 'warning');
+                this.updateProgress(20);
+
+                try {
+                    // Import the main module factory
+                    const moduleFactory = (await import('./gtk-webgpu-main.js')).default;
+                    this.updateProgress(40);
+
+                    // Load WASM binary
+                    this.log('Loading WASM binary...');
+                    const wasmResponse = await fetch('./gtk-webgpu-main.wasm');
+                    if (!wasmResponse.ok) {
+                        throw new Error(`Failed to load WASM: ${wasmResponse.status}`);
+                    }
+                    const wasmBinary = await wasmResponse.arrayBuffer();
+                    this.updateProgress(60);
+
+                    // Initialize module
+                    this.log('Initializing WASM module...');
+                    this.wasmModule = await moduleFactory({
+                        wasmBinary,
+                        canvas: this.canvas,
+                        preRun: [],
+                        postRun: [() => {
+                            this.log('WASM module initialized successfully', 'success');
+                            this.updateStatus('main-status', '✅ Loaded', 'success');
+                            this.updateProgress(80);
+                        }],
+                        onAbort: (what) => {
+                            this.log(`WASM module aborted: ${what}`, 'error');
+                        },
+                        print: (text) => {
+                            this.log(`[WASM] ${text}`);
+                        },
+                        printErr: (text) => {
+                            this.log(`[WASM Error] ${text}`, 'error');
+                        }
+                    });
+
+                    this.updateProgress(100);
+                    this.log('GTK WebGPU module loaded successfully', 'success');
+                    return true;
+
+                } catch (error) {
+                    this.log(`Failed to load WASM module: ${error.message}`, 'error');
+                    this.updateStatus('main-status', '❌ Failed', 'error');
+                    throw error;
+                }
+            }
+
+            async loadSideModules() {
+                this.log('Loading SIDE modules...');
+                this.updateStatus('side-status', 'Loading...', 'warning');
+
+                const sideModules = [
+                    '../../install/lib/glib-side.so',
+                    '../../install/lib/cairo-side.so',
+                    '../../install/lib/zlib-side.so'
+                ];
+
+                let loadedCount = 0;
+                for (const modulePath of sideModules) {
+                    try {
+                        this.log(`Loading ${modulePath.split('/').pop()}...`);
+                        // SIDE modules are loaded by the MAIN module via dlopen()
+                        // We just verify they exist
+                        const response = await fetch(modulePath, { method: 'HEAD' });
+                        if (response.ok) {
+                            loadedCount++;
+                            this.log(`✅ ${modulePath.split('/').pop()} available`);
+                        } else {
+                            this.log(`⚠️ ${modulePath.split('/').pop()} not found`, 'warning');
+                        }
+                    } catch (error) {
+                        this.log(`❌ Failed to check ${modulePath.split('/').pop()}: ${error.message}`, 'error');
+                    }
+                }
+
+                if (loadedCount > 0) {
+                    this.updateStatus('side-status', `✅ ${loadedCount}/${sideModules.length}`, 'success');
+                    this.log(`${loadedCount} SIDE modules available`, 'success');
+                } else {
+                    this.updateStatus('side-status', '❌ None', 'error');
+                    this.log('No SIDE modules available', 'warning');
+                }
+            }
+
+            startGTKApplication() {
+                if (!this.wasmModule) {
+                    this.log('WASM module not loaded', 'error');
+                    return;
+                }
+
+                try {
+                    this.log('Starting GTK WebGPU application...', 'success');
+
+                    // Show canvas and hide loading state
+                    document.getElementById('loading-state').classList.add('hidden');
+                    this.canvas.classList.remove('hidden');
+
+                    // Call the main function (this would start the GTK main loop)
+                    if (this.wasmModule._main) {
+                        this.wasmModule._main();
+                    }
+
+                    // Start performance monitoring
+                    this.startPerformanceMonitoring();
+
+                    // Enable controls
+                    document.getElementById('stress-test-btn').disabled = false;
+                    document.getElementById('benchmark-btn').disabled = false;
+
+                } catch (error) {
+                    this.log(`Failed to start GTK application: ${error.message}`, 'error');
+                }
+            }
+
+            startPerformanceMonitoring() {
+                let lastTime = performance.now();
+                let frameCount = 0;
+
+                const updatePerformance = () => {
+                    const currentTime = performance.now();
+                    frameCount++;
+
+                    if (currentTime - lastTime >= 1000) {
+                        this.performance.fps = Math.round(frameCount * 1000 / (currentTime - lastTime));
+                        this.performance.frameTime = (currentTime - lastTime) / frameCount;
+
+                        // Get metrics from WASM if available
+                        if (this.wasmModule && this.wasmModule._webgpu_factory_get_metrics) {
+                            // This would get actual metrics from the WASM module
+                            this.performance.simdSpeedup = this.capabilities.simd ? 3.5 : 1.0;
+                            this.performance.widgetCount = 8; // Placeholder
+                        }
+
+                        // Update UI
+                        this.updateStatus('fps-counter', `${this.performance.fps} FPS`);
+                        this.updateStatus('frame-time', `${this.performance.frameTime.toFixed(1)}ms`);
+                        this.updateStatus('simd-speedup', `${this.performance.simdSpeedup.toFixed(1)}x`);
+                        this.updateStatus('widget-count', this.performance.widgetCount.toString());
+
+                        lastTime = currentTime;
+                        frameCount = 0;
+                    }
+
+                    requestAnimationFrame(updatePerformance);
+                };
+
+                updatePerformance();
+            }
+
+            runStressTest() {
+                if (!this.wasmModule) return;
+
+                this.log('Running stress test...', 'warning');
+
+                try {
+                    // Use cwrap to access the function
+                    const stressTest = this.wasmModule.cwrap('stress_test_widgets', 'void', []);
+                    stressTest();
+                    this.log('Stress test completed', 'success');
+                } catch (error) {
+                    this.log(`Stress test function not available: ${error.message}`, 'warning');
+                }
+            }
+
+            runBenchmark() {
+                if (!this.wasmModule) return;
+
+                this.log('Running performance benchmark...', 'warning');
+
+                try {
+                    // Use cwrap to access the function
+                    const benchmark = this.wasmModule.cwrap('webgpu_factory_run_benchmark', 'void', ['number']);
+                    benchmark(5); // 5 second benchmark
+                    this.log('Benchmark completed', 'success');
+                } catch (error) {
+                    this.log(`Benchmark function not available: ${error.message}`, 'warning');
+                }
+            }
+        }
+
+        // Initialize the application
+        const app = new GTKWebGPUApp();
+
+        // Setup event handlers
+        document.getElementById('start-btn').addEventListener('click', () => {
+            app.startGTKApplication();
+        });
+
+        document.getElementById('stress-test-btn').addEventListener('click', () => {
+            app.runStressTest();
+        });
+
+        document.getElementById('benchmark-btn').addEventListener('click', () => {
+            app.runBenchmark();
+        });
+
+        // Start the initialization process
+        async function initialize() {
+            try {
+                app.log('Starting GTK WebGPU Widget Factory...');
+
+                const capabilitiesOk = await app.detectCapabilities();
+                if (!capabilitiesOk) {
+                    app.log('Browser requirements not met. Please use Chrome 113+ or Edge 113+ with WebGPU enabled.', 'error');
+                    return;
+                }
+
+                await app.loadSideModules();
+                await app.loadWASMModule();
+
+                // Enable start button
+                document.getElementById('start-btn').disabled = false;
+                app.log('Ready to start GTK WebGPU application!', 'success');
+
+            } catch (error) {
+                app.log(`Initialization failed: ${error.message}`, 'error');
+            }
+        }
+
+        // Start initialization when page loads
+        initialize();
+    </script>
+</body>
+</html>

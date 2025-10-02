@@ -2,10 +2,11 @@
 # Copyright 2025 Superstruct Ltd, New Zealand
 # Licensed under LGPL-2.1-or-later
 
-# Find WebGPU headers from Emscripten
+# Find WebGPU headers from Dawn port
 find_path(WEBGPU_INCLUDE_DIR
-  NAMES emscripten/html5_webgpu.h
-  PATHS ${EMSCRIPTEN}/system/include
+  NAMES webgpu/webgpu.h
+  PATHS ${EMSCRIPTEN}/cache/ports/emdawnwebgpu/include
+        ${EMSCRIPTEN}/system/include
   NO_DEFAULT_PATH
 )
 
@@ -13,9 +14,9 @@ if(WEBGPU_INCLUDE_DIR)
   message(STATUS "Found WebGPU headers: ${WEBGPU_INCLUDE_DIR}")
   set(WEBGPU_FOUND TRUE)
   
-  # Set WebGPU compile flags
-  set(WEBGPU_C_FLAGS "-sUSE_WEBGPU=1 -sASYNCIFY")
-  set(WEBGPU_LINK_FLAGS "-sUSE_WEBGPU=1 -sASYNCIFY --js-library=${CMAKE_CURRENT_LIST_DIR}/webgpu-bindings.js")
+  # Set WebGPU compile flags for Dawn API
+  set(WEBGPU_C_FLAGS "--use-port=emdawnwebgpu -sASYNCIFY")
+  set(WEBGPU_LINK_FLAGS "--use-port=emdawnwebgpu -sASYNCIFY --js-library=${CMAKE_CURRENT_LIST_DIR}/webgpu-bindings.js")
   
   # Add SIMD support if requested
   if(ENABLE_WEBGPU_SIMD)

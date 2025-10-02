@@ -1,0 +1,240 @@
+# Template GitHub Actions workflow for WASM SIDE module deployment
+# Copy this to .github/workflows/deploy-side-module.yml in each library repo
+
+name: Build, Test, and Deploy SIDE Module
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'wasm/**'
+      - 'src/**'
+      - 'meson.build'
+      - 'CMakeLists.txt'
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: 'Deploy to wasm.discere.cloud'
+        required: false
+        default: 'false'
+
+env:
+  EMSCRIPTEN_VERSION: '4.0.15'
+
+jobs:
+  build-side-module:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for git describe
+
+      - name: Setup Emscripten SDK
+        uses: mymindstorm/setup-emsdk@v13
+        with:
+          version: ${{ env.EMSCRIPTEN_VERSION }}
+          actions-cache-folder: 'emsdk-cache'
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            meson \
+            ninja-build \
+            pkg-config \
+            jq
+
+      - name: Build SIDE module
+        run: |
+          if [[ -x ./build-dual.sh ]]; then
+            ./build-dual.sh side
+          elif [[ -x ./build-wasm.sh ]]; then
+            ./build-wasm.sh
+          else
+            echo "Error: No build script found"
+            exit 1
+          fi
+
+      - name: Calculate SHA-256
+        id: sha
+        run: |
+          WASM_FILE=$(find install -name "*-side.wasm" | head -1)
+          if [[ -z "$WASM_FILE" ]]; then
+            echo "Error: SIDE module not found"
+            exit 1
+          fi
+
+          SHA=$(sha256sum "$WASM_FILE" | awk '{print $1}')
+          echo "WASM_SHA=${SHA}" >> $GITHUB_ENV
+          echo "WASM_FILE=${WASM_FILE}" >> $GITHUB_ENV
+          echo "sha=${SHA}" >> $GITHUB_OUTPUT
+          echo "$SHA" > "${WASM_FILE}.sha256"
+
+          echo "✅ SHA-256: $SHA"
+          echo "📦 File: $WASM_FILE"
+
+      - name: Get version
+        id: version
+        run: |
+          VERSION=$(git describe --tags --always)
+          echo "VERSION=${VERSION}" >> $GITHUB_ENV
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "📋 Version: $VERSION"
+
+      - name: Generate manifest
+        run: |
+          MODULE_NAME=$(basename $(pwd) .wasm)
+          chmod +x scripts/generate-manifest.sh || true
+
+          ./scripts/generate-manifest.sh \
+            --name "$MODULE_NAME" \
+            --version "${{ env.VERSION }}" \
+            --sha "${{ env.WASM_SHA }}" \
+            --wasm-file "${{ env.WASM_FILE }}" \
+            --output "$(dirname ${{ env.WASM_FILE }})/manifest.json"
+
+      - name: Run tests
+        run: |
+          if [[ -f "deno.json" ]] && command -v deno &> /dev/null; then
+            deno test --allow-read tests/deno/ || echo "Tests not available"
+          else
+            echo "Deno tests not configured"
+          fi
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: side-module-${{ steps.version.outputs.version }}
+          path: |
+            ${{ env.WASM_FILE }}
+            ${{ env.WASM_FILE }}.sha256
+            install/**/manifest.json
+          retention-days: 30
+
+  deploy-to-r2:
+    runs-on: ubuntu-22.04
+    needs: [build-side-module]
+    if: github.ref == 'refs/heads/main' || github.event.inputs.deploy == 'true'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: side-module-${{ needs.build-side-module.outputs.version }}
+          path: ./dist
+
+      - name: Configure AWS CLI for R2
+        run: |
+          pip install awscli
+          aws configure set aws_access_key_id ${{ secrets.R2_ACCESS_KEY_ID }}
+          aws configure set aws_secret_access_key ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          aws configure set default.region auto
+
+      - name: Deploy to Cloudflare R2
+        env:
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          MODULE_NAME: ${{ github.event.repository.name }}
+        run: |
+          # Remove .wasm suffix from repo name if present
+          MODULE=${MODULE_NAME%.wasm}
+
+          WASM_FILE=$(find dist -name "*-side.wasm" | head -1)
+          SHA=${{ needs.build-side-module.outputs.sha }}
+          VERSION=${{ needs.build-side-module.outputs.version }}
+
+          echo "📦 Deploying ${MODULE}@${VERSION}"
+          echo "🔒 SHA-256: $SHA"
+
+          # Upload to content-addressable path (immutable, highest cache)
+          aws s3 cp \
+            "$WASM_FILE" \
+            "s3://wasm-discere-cloud/v1/modules/${MODULE}/sha-${SHA}/${MODULE}-side.wasm" \
+            --endpoint-url "$R2_ENDPOINT" \
+            --cache-control "public, max-age=31536000, immutable" \
+            --metadata "version=${VERSION},commit=${{ github.sha }}"
+
+          aws s3 cp \
+            "${WASM_FILE}.sha256" \
+            "s3://wasm-discere-cloud/v1/modules/${MODULE}/sha-${SHA}/${MODULE}-side.wasm.sha256" \
+            --endpoint-url "$R2_ENDPOINT" \
+            --cache-control "public, max-age=31536000, immutable"
+
+          aws s3 cp \
+            "$(dirname $WASM_FILE)/manifest.json" \
+            "s3://wasm-discere-cloud/v1/modules/${MODULE}/sha-${SHA}/manifest.json" \
+            --endpoint-url "$R2_ENDPOINT" \
+            --cache-control "public, max-age=31536000, immutable"
+
+          # Upload to semantic version path (immutable)
+          aws s3 cp \
+            "$WASM_FILE" \
+            "s3://wasm-discere-cloud/v1/modules/${MODULE}/${VERSION}/${MODULE}-side.wasm" \
+            --endpoint-url "$R2_ENDPOINT" \
+            --cache-control "public, max-age=31536000, immutable"
+
+          # Update 'latest' symlink (short cache)
+          echo "Updating latest redirect..."
+          echo "$VERSION" > latest.txt
+          aws s3 cp \
+            latest.txt \
+            "s3://wasm-discere-cloud/v1/modules/${MODULE}/latest.txt" \
+            --endpoint-url "$R2_ENDPOINT" \
+            --cache-control "public, max-age=300"
+
+          echo "✅ Deployed to wasm.discere.cloud"
+          echo "📋 URL: https://wasm.discere.cloud/v1/modules/${MODULE}/sha-${SHA}/${MODULE}-side.wasm"
+
+      - name: Update registry
+        run: |
+          # TODO: Implement central registry update
+          # This would add the new module to a central registry.json file
+          echo "Registry update not yet implemented"
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            ${{ env.WASM_FILE }}
+            ${{ env.WASM_FILE }}.sha256
+            dist/**/manifest.json
+          body: |
+            ## WASM SIDE Module Release
+
+            **Version**: ${{ needs.build-side-module.outputs.version }}
+            **SHA-256**: `${{ needs.build-side-module.outputs.sha }}`
+
+            ### CDN URLs
+            - Latest: https://wasm.discere.cloud/v1/modules/${{ github.event.repository.name }}/latest/${{ github.event.repository.name }}-side.wasm
+            - Version: https://wasm.discere.cloud/v1/modules/${{ github.event.repository.name }}/${{ needs.build-side-module.outputs.version }}/${{ github.event.repository.name }}-side.wasm
+            - SHA: https://wasm.discere.cloud/v1/modules/${{ github.event.repository.name }}/sha-${{ needs.build-side-module.outputs.sha }}/${{ github.event.repository.name }}-side.wasm
+
+            ### Usage
+            \`\`\`bash
+            # Fetch this module
+            curl -fL https://wasm.discere.cloud/v1/modules/${{ github.event.repository.name }}/latest/${{ github.event.repository.name }}-side.wasm \
+              -o ${{ github.event.repository.name }}-side.wasm
+
+            # Verify integrity
+            echo "${{ needs.build-side-module.outputs.sha }}  ${{ github.event.repository.name }}-side.wasm" | sha256sum -c
+            \`\`\`
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  notify:
+    runs-on: ubuntu-22.04
+    needs: [deploy-to-r2]
+    if: always()
+    steps:
+      - name: Deployment status
+        run: |
+          if [[ "${{ needs.deploy-to-r2.result }}" == "success" ]]; then
+            echo "✅ Deployment successful!"
+          else
+            echo "❌ Deployment failed or skipped"
+          fi

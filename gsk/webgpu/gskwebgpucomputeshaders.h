@@ -18,7 +18,7 @@
 #pragma once
 
 #include "gskwebgpudevice.h"
-#include <emscripten/html5_webgpu.h>
+#include <webgpu/webgpu.h>
 #include <glib.h>
 
 G_BEGIN_DECLS

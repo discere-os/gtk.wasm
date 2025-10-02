@@ -16,6 +16,8 @@
  */
 
 #include "gskwebgpudevice.h"
+#include <webgpu/webgpu.h>
+#include <stdbool.h>
 
 struct _GskWebGPUDevice
 {
@@ -382,14 +384,14 @@ gsk_webgpu_device_write_texture (GskWebGPUDevice   *device,
   g_return_if_fail (data_size > 0);
   g_return_if_fail (width > 0 && height > 0);
 
-  WGPUImageCopyTexture destination = {
+  WGPUTexelCopyTextureInfo destination = {
     .texture = texture,
     .mipLevel = 0,
     .origin = { 0, 0, 0 },
     .aspect = WGPUTextureAspect_All
   };
 
-  WGPUTextureDataLayout data_layout = {
+  WGPUTexelCopyBufferLayout data_layout = {
     .offset = 0,
     .bytesPerRow = width * 4, /* Assume RGBA8 */
     .rowsPerImage = height
