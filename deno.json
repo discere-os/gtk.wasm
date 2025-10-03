@@ -9,7 +9,8 @@
     "build:main:meson": "meson setup build-main --cross-file=scripts/emscripten.cross -Dbuildtype=release --prefix=$PWD/install -Dlibdir=wasm -Dbindir=wasm && meson compile -C build-main gtk-main && meson install -C build-main",
     "build:side:meson": "meson setup build-side --cross-file=scripts/emscripten.cross -Dbuildtype=release --prefix=$PWD/install -Dlibdir=wasm -Dbindir=wasm -Dc_args='-msimd128' -Dc_link_args='-sSIDE_MODULE=2 -fPIC -O3 -flto' && meson compile -C build-side gtk-side && meson install -C build-side && python3 scripts/postinstall.py $PWD/install",
     "build:deps:meson": "bash -lc 'set -e; cd ..; libs=( zlib.wasm libexpat.wasm libffi.wasm libpng.wasm libjpeg-turbo.wasm libtiff.wasm pixman.wasm freetype.wasm fontconfig.wasm fribidi.wasm harfbuzz.wasm cairo.wasm gdk-pixbuf.wasm pango.wasm graphene.wasm glib.wasm epoxy.wasm icu.wasm ); for d in \"${libs[@]}\"; do echo \"[deps] Building $d (SIDE)\"; (cd $d && if deno task | grep -q build:side:meson; then deno task build:side:meson; elif deno task | grep -q build:side; then deno task build:side; elif deno task | grep -q build:wasm:meson; then deno task build:wasm:meson; elif deno task | grep -q build:wasm; then deno task build:wasm; else echo \"No suitable build task found in $d\"; fi); done'",
-    "build:wasm:meson": "deno task build:deps:meson && deno task build:main:meson && deno task build:side:meson",
+    "build:wasm:meson": "deno task build:deps:meson && deno task build:main:meson && deno task build:side:meson && deno task manifest",
+    "manifest": "deno run --allow-read --allow-write --allow-run ../../../../scripts/generate-wasm-manifest.ts .",
     "build:all:meson": "deno task build:wasm:meson"
   }
 }

@@ -1,0 +1,82 @@
+{
+  "wasm:glib": {
+    "version": "^2.78.0",
+    "symbols": {
+      "required": [
+        "g_malloc",
+        "g_free",
+        "g_strdup",
+        "g_object_new",
+        "g_object_unref",
+        "g_signal_connect_data",
+        "g_type_register_static"
+      ]
+    },
+    "loading": "eager",
+    "fallback": null
+  },
+  "wasm:cairo": {
+    "version": "^1.18.0",
+    "symbols": {
+      "required": [
+        "cairo_create",
+        "cairo_surface_create_similar",
+        "cairo_paint",
+        "cairo_stroke",
+        "cairo_fill"
+      ]
+    },
+    "loading": "eager",
+    "fallback": null
+  },
+  "wasm:pango": {
+    "version": "^1.51.0",
+    "symbols": {
+      "required": [
+        "pango_layout_new",
+        "pango_layout_set_text",
+        "pango_font_description_new"
+      ]
+    },
+    "loading": "eager",
+    "fallback": null
+  },
+  "wasm:gdk-pixbuf": {
+    "version": "^2.42.0",
+    "symbols": {
+      "required": [
+        "gdk_pixbuf_new",
+        "gdk_pixbuf_get_pixels",
+        "gdk_pixbuf_loader_new"
+      ]
+    },
+    "loading": "lazy",
+    "fallback": null
+  },
+  "wasm:graphene": {
+    "version": "^1.10.0",
+    "symbols": {
+      "required": [
+        "graphene_matrix_init_identity",
+        "graphene_point_init",
+        "graphene_rect_init"
+      ]
+    },
+    "loading": "eager",
+    "fallback": null
+  },
+  "wasm:libc": {
+    "version": "*",
+    "symbols": {
+      "required": [
+        "malloc",
+        "free",
+        "memcpy",
+        "memset",
+        "strcmp"
+      ]
+    },
+    "loading": "eager",
+    "fallback": null
+  }
+}
