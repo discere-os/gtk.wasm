@@ -191,9 +191,9 @@ static void draw_rect(const char* canvas_id, float x, float y, float width, floa
         const canvas = document.getElementById(UTF8ToString($0));
         if (!canvas) return;
         const ctx = canvas.getContext('2d');
-        ctx.fillStyle = `rgba(${$4 * 255}, ${$5 * 255}, ${$6 * 255}, ${$7})`;
-        ctx.fillRect($1, $2, $3, $3 + $4 - $1);
-    }, canvas_id, x, y, x + width, y + height, color[0], color[1], color[2], color[3]);
+        ctx.fillStyle = `rgba(${$5 * 255}, ${$6 * 255}, ${$7 * 255}, ${$8})`;
+        ctx.fillRect($1, $2, $3, $4);
+    }, canvas_id, x, y, width, height, color[0], color[1], color[2], color[3]);
 }
 
 static void draw_text(const char* canvas_id, const char* text, float x, float y, float* color) {
