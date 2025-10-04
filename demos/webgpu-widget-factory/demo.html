@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GTK Widget Factory - Full Stack Rendering Demo</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            padding: 2rem;
+        }
+
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 2rem;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+
+        .container {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            padding: 2rem;
+            max-width: 900px;
+            margin: 0 auto;
+            width: 100%;
+        }
+
+        .canvas-wrapper {
+            position: relative;
+            background: #f5f5f5;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            margin-bottom: 1.5rem;
+        }
+
+        #gtk-canvas {
+            display: block;
+            width: 800px;
+            height: 600px;
+            border-radius: 6px;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .stat-box {
+            background: #f8f9fa;
+            padding: 1rem;
+            border-radius: 6px;
+            text-align: center;
+        }
+
+        .stat-label {
+            font-size: 0.85rem;
+            color: #666;
+            margin-bottom: 0.25rem;
+        }
+
+        .stat-value {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: #2c3e50;
+        }
+
+        .log {
+            background: #2c3e50;
+            color: #ecf0f1;
+            padding: 1rem;
+            border-radius: 6px;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 0.9rem;
+            max-height: 150px;
+            overflow-y: auto;
+        }
+
+        .log-entry {
+            margin-bottom: 0.25rem;
+        }
+
+        .log-entry.success { color: #2ecc71; }
+        .log-entry.warning { color: #f39c12; }
+        .log-entry.error { color: #e74c3c; }
+
+        .loading {
+            text-align: center;
+            padding: 3rem;
+            color: #666;
+        }
+
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid #ecf0f1;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 1rem;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🎨 GTK Widget Factory</h1>
+        <p>Full Stack Rendering Demo with WASM SIMD Optimizations</p>
+    </div>
+
+    <div class="container">
+        <div id="loading" class="loading">
+            <div class="spinner"></div>
+            <p>Loading GTK Widget Factory...</p>
+        </div>
+
+        <div id="app" class="hidden">
+            <div class="canvas-wrapper">
+                <canvas id="gtk-canvas" width="800" height="600"></canvas>
+            </div>
+
+            <div class="stats">
+                <div class="stat-box">
+                    <div class="stat-label">FPS</div>
+                    <div class="stat-value" id="fps">-</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-label">Frame Time</div>
+                    <div class="stat-value" id="frame-time">-</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-label">Widgets</div>
+                    <div class="stat-value" id="widget-count">-</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-label">SIMD Speedup</div>
+                    <div class="stat-value" id="simd-speedup">-</div>
+                </div>
+            </div>
+
+            <div class="log" id="log">
+                <div class="log-entry">Initializing...</div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        function log(message, type = 'info') {
+            const logDiv = document.getElementById('log');
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${type}`;
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            logDiv.appendChild(entry);
+            logDiv.scrollTop = logDiv.scrollHeight;
+            console.log(`[GTK] ${message}`);
+        }
+
+        async function init() {
+            try {
+                log('Loading GTK Widget Factory module...');
+
+                // Import the WASM module
+                const GTKWidgetFactory = (await import('./gtk-widget-factory.js')).default;
+
+                log('Initializing WASM module...');
+
+                // Initialize the module
+                const module = await GTKWidgetFactory({
+                    canvas: document.getElementById('gtk-canvas'),
+                    print: (text) => log(`[WASM] ${text}`),
+                    printErr: (text) => log(`[WASM] ${text}`, 'error'),
+                    onRuntimeInitialized: () => {
+                        log('WASM runtime initialized', 'success');
+                    }
+                });
+
+                // Hide loading, show app
+                document.getElementById('loading').classList.add('hidden');
+                document.getElementById('app').classList.remove('hidden');
+
+                log('GTK Widget Factory loaded successfully!', 'success');
+                log('Rendering all widget types...', 'success');
+
+                // Update stats periodically
+                setInterval(() => {
+                    try {
+                        const metricsPtr = module._get_performance_metrics();
+                        if (metricsPtr) {
+                            const fps = module.HEAPF64[metricsPtr / 8];
+                            const frameTime = module.HEAPF64[metricsPtr / 8 + 1];
+                            const widgetCount = module.HEAP32[metricsPtr / 4 + 4];
+                            const simdSpeedup = module.HEAPF64[metricsPtr / 8 + 3];
+
+                            document.getElementById('fps').textContent = fps.toFixed(1);
+                            document.getElementById('frame-time').textContent = frameTime.toFixed(1) + 'ms';
+                            document.getElementById('widget-count').textContent = widgetCount;
+                            document.getElementById('simd-speedup').textContent = simdSpeedup.toFixed(1) + 'x';
+                        }
+                    } catch (e) {
+                        // Ignore metrics errors
+                    }
+                }, 1000);
+
+            } catch (error) {
+                log(`Failed to initialize: ${error.message}`, 'error');
+                console.error(error);
+            }
+        }
+
+        // Start initialization
+        init();
+    </script>
+</body>
+</html>
