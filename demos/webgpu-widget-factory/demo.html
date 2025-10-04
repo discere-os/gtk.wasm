@@ -212,22 +212,18 @@
                 log('GTK Widget Factory loaded successfully!', 'success');
                 log('Rendering all widget types...', 'success');
 
-                // Update stats periodically
+                // Update stats periodically using individual getters
                 setInterval(() => {
                     try {
-                        const metricsPtr = module._get_performance_metrics();
-                        if (metricsPtr) {
-                            // Struct layout: double fps, double frame_time, int widget_count (padded), double simd_speedup
-                            const fps = module.HEAPF64[metricsPtr / 8 + 0];      // offset 0
-                            const frameTime = module.HEAPF64[metricsPtr / 8 + 1];  // offset 8
-                            const widgetCount = module.HEAP32[metricsPtr / 4 + 4]; // offset 16
-                            const simdSpeedup = module.HEAPF64[metricsPtr / 8 + 3]; // offset 24
+                        const fps = module._get_fps();
+                        const frameTime = module._get_frame_time();
+                        const widgetCount = module._get_widget_count();
+                        const simdSpeedup = module._get_simd_speedup();
 
-                            document.getElementById('fps').textContent = fps > 0 ? fps.toFixed(1) : '-';
-                            document.getElementById('frame-time').textContent = frameTime > 0 ? frameTime.toFixed(1) + 'ms' : '-';
-                            document.getElementById('widget-count').textContent = widgetCount > 0 ? widgetCount : '-';
-                            document.getElementById('simd-speedup').textContent = simdSpeedup > 0 ? simdSpeedup.toFixed(1) + 'x' : '-';
-                        }
+                        document.getElementById('fps').textContent = fps > 0 ? fps.toFixed(1) : '-';
+                        document.getElementById('frame-time').textContent = frameTime > 0 ? frameTime.toFixed(1) + 'ms' : '-';
+                        document.getElementById('widget-count').textContent = widgetCount > 0 ? widgetCount : '-';
+                        document.getElementById('simd-speedup').textContent = simdSpeedup > 0 ? simdSpeedup.toFixed(1) + 'x' : '-';
                     } catch (e) {
                         console.error('Metrics error:', e);
                     }

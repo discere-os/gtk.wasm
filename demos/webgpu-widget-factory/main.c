@@ -481,7 +481,27 @@ void update_performance() {
     }
 }
 
-// Get performance metrics
+// Get performance metrics - individual getters to avoid struct alignment issues
+EMSCRIPTEN_KEEPALIVE
+double get_fps() {
+    return perf_metrics.fps;
+}
+
+EMSCRIPTEN_KEEPALIVE
+double get_frame_time() {
+    return perf_metrics.frame_time;
+}
+
+EMSCRIPTEN_KEEPALIVE
+int get_widget_count() {
+    return perf_metrics.widget_count;
+}
+
+EMSCRIPTEN_KEEPALIVE
+double get_simd_speedup() {
+    return perf_metrics.simd_speedup;
+}
+
 EMSCRIPTEN_KEEPALIVE
 PerformanceMetrics* get_performance_metrics() {
     return &perf_metrics;

@@ -21,7 +21,7 @@ emcc "$SOURCE" \
     -sNO_FILESYSTEM=1 \
     -sENVIRONMENT=web,webview,worker \
     -sINITIAL_MEMORY=33554432 \
-    -sEXPORTED_FUNCTIONS='["_main","_init_webgpu","_render_widgets","_update_performance","_get_performance_metrics"]' \
+    -sEXPORTED_FUNCTIONS='["_main","_init_webgpu","_render_widgets","_update_performance","_get_fps","_get_frame_time","_get_widget_count","_get_simd_speedup","_get_performance_metrics"]' \
     -sEXPORTED_RUNTIME_METHODS='["cwrap","ccall","UTF8ToString"]' \
     -o "$OUTPUT_JS"
 
