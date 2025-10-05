@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GTK4 Comprehensive Rendering Demo - C/WASM</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: rgba(255, 255, 255, 0.95);
+            padding: 30px;
+            border-radius: 15px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            text-align: center;
+        }
+
+        .header h1 {
+            color: #2d3748;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            font-weight: 700;
+        }
+
+        .header .subtitle {
+            color: #4a5568;
+            font-size: 1.2em;
+            margin-bottom: 15px;
+        }
+
+        .badge {
+            display: inline-block;
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 0.9em;
+            font-weight: 600;
+            margin: 5px;
+        }
+
+        .content-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        @media (max-width: 968px) {
+            .content-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .card {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 12px;
+            padding: 25px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        .card h2 {
+            color: #2d3748;
+            margin-bottom: 15px;
+            font-size: 1.5em;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .card h3 {
+            color: #4a5568;
+            margin: 20px 0 10px 0;
+            font-size: 1.2em;
+        }
+
+        .feature-list {
+            list-style: none;
+            padding: 0;
+        }
+
+        .feature-list li {
+            padding: 8px 0;
+            padding-left: 30px;
+            position: relative;
+            color: #4a5568;
+            line-height: 1.6;
+        }
+
+        .feature-list li:before {
+            content: "✓";
+            position: absolute;
+            left: 0;
+            color: #48bb78;
+            font-weight: bold;
+            font-size: 1.2em;
+        }
+
+        .code-block {
+            background: #1a202c;
+            color: #68d391;
+            padding: 20px;
+            border-radius: 8px;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 0.9em;
+            overflow-x: auto;
+            margin: 15px 0;
+            line-height: 1.6;
+        }
+
+        .code-block .comment {
+            color: #718096;
+        }
+
+        .code-block .keyword {
+            color: #f687b3;
+        }
+
+        .code-block .string {
+            color: #fbd38d;
+        }
+
+        .code-block .function {
+            color: #63b3ed;
+        }
+
+        .demo-preview {
+            background: #f7fafc;
+            border: 2px dashed #cbd5e0;
+            border-radius: 8px;
+            padding: 30px;
+            text-align: center;
+            margin: 20px 0;
+        }
+
+        .demo-preview img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+
+        .build-status {
+            background: #f7fafc;
+            border-left: 4px solid #667eea;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 15px 0;
+        }
+
+        .build-status h4 {
+            color: #2d3748;
+            margin-bottom: 10px;
+        }
+
+        .status-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .status-item {
+            background: white;
+            padding: 10px;
+            border-radius: 6px;
+            text-align: center;
+            border: 1px solid #e2e8f0;
+        }
+
+        .status-item.built {
+            border-left: 3px solid #48bb78;
+        }
+
+        .status-item.pending {
+            border-left: 3px solid #ed8936;
+        }
+
+        .btn {
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 1em;
+            margin: 10px 5px;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn.secondary {
+            background: #4a5568;
+        }
+
+        .rendering-capabilities {
+            background: linear-gradient(135deg, #48bb78, #38a169);
+            color: white;
+            padding: 25px;
+            border-radius: 12px;
+            margin: 20px 0;
+        }
+
+        .rendering-capabilities h3 {
+            color: white;
+            margin-bottom: 15px;
+        }
+
+        .capability-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+
+        .capability-item {
+            background: rgba(255, 255, 255, 0.2);
+            padding: 15px;
+            border-radius: 8px;
+            backdrop-filter: blur(10px);
+        }
+
+        .capability-item h4 {
+            color: white;
+            margin-bottom: 8px;
+            font-size: 1.1em;
+        }
+
+        .capability-item p {
+            font-size: 0.9em;
+            opacity: 0.9;
+            line-height: 1.5;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎨 GTK4 Comprehensive Rendering Demo</h1>
+            <div class="subtitle">Complete C/C++ Implementation Compiled to WebAssembly</div>
+            <div>
+                <span class="badge">Pure C Code</span>
+                <span class="badge">Emscripten</span>
+                <span class="badge">GTK4 + Cairo + Pango</span>
+                <span class="badge">WebGPU Ready</span>
+            </div>
+        </div>
+
+        <div class="rendering-capabilities">
+            <h3>🚀 Complete Rendering Capabilities Demonstrated</h3>
+            <div class="capability-grid">
+                <div class="capability-item">
+                    <h4>🎯 Widgets</h4>
+                    <p>Buttons, entries, scales, switches, progress bars, spinners, and more</p>
+                </div>
+                <div class="capability-item">
+                    <h4>📝 Text Rendering</h4>
+                    <p>Pango text layout, multiple fonts, Unicode, RTL support, ligatures</p>
+                </div>
+                <div class="capability-item">
+                    <h4>🖼️ Images</h4>
+                    <p>GdkPixbuf image loading, display, and manipulation</p>
+                </div>
+                <div class="capability-item">
+                    <h4>🎨 Cairo Graphics</h4>
+                    <p>2D drawing, shapes, gradients, transformations, paths</p>
+                </div>
+                <div class="capability-item">
+                    <h4>📐 Layout Managers</h4>
+                    <p>Box, grid, and advanced layout algorithms</p>
+                </div>
+                <div class="capability-item">
+                    <h4>⚡ Events</h4>
+                    <p>Mouse, keyboard, and gesture event handling</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="content-grid">
+            <div class="card">
+                <h2>📋 Demo Overview</h2>
+                <p style="margin-bottom: 15px; color: #4a5568;">
+                    This comprehensive demo showcases all major GTK4 rendering capabilities in a single C application.
+                    The demo is organized into multiple tabs demonstrating different aspects of the GTK stack.
+                </p>
+
+                <h3>Page 1: Widget Gallery</h3>
+                <ul class="feature-list">
+                    <li>5 styled buttons (Primary, Secondary, Success, Danger, Warning)</li>
+                    <li>Text entry with placeholder and activation handling</li>
+                    <li>Horizontal scale/slider with value display</li>
+                    <li>3 toggle switches with labels</li>
+                    <li>Progress bar showing completion state</li>
+                    <li>Animated spinner widget</li>
+                    <li>Live status label showing widget interactions</li>
+                </ul>
+
+                <h3>Page 2: Text Rendering</h3>
+                <ul class="feature-list">
+                    <li>Multi-line text view with word wrapping</li>
+                    <li>Multiple font families (Sans, Serif, Monospace)</li>
+                    <li>Font attributes (bold, italic, underline)</li>
+                    <li>Unicode text (Chinese, Arabic, Hebrew)</li>
+                    <li>Right-to-left text support</li>
+                    <li>Ligatures and kerning demonstrations</li>
+                    <li>Variable text sizes</li>
+                    <li>Monospace code blocks</li>
+                </ul>
+
+                <h3>Page 3: Cairo Graphics</h3>
+                <ul class="feature-list">
+                    <li>Custom drawing area (400x300px)</li>
+                    <li>Linear gradient backgrounds</li>
+                    <li>Basic shapes (circles, rectangles, triangles)</li>
+                    <li>Pango text integrated with Cairo</li>
+                    <li>Rotated and transformed text</li>
+                    <li>Bezier curves and paths</li>
+                    <li>Color blending and transparency</li>
+                </ul>
+
+                <h3>Page 4: Layout Demo</h3>
+                <ul class="feature-list">
+                    <li>Grid layout manager (3x4 grid)</li>
+                    <li>Automatic spacing and alignment</li>
+                    <li>Responsive widget arrangement</li>
+                </ul>
+            </div>
+
+            <div class="card">
+                <h2>💻 Source Code</h2>
+                <p style="margin-bottom: 15px; color: #4a5568;">
+                    Complete C implementation using GTK4 APIs. This is <strong>pure C code</strong>, not TypeScript!
+                </p>
+
+                <div class="code-block">
+<span class="comment">/* GTK Comprehensive Rendering Demo */</span>
+<span class="keyword">#include</span> <span class="string">&lt;gtk/gtk.h&gt;</span>
+<span class="keyword">#include</span> <span class="string">&lt;gdk-pixbuf/gdk-pixbuf.h&gt;</span>
+<span class="keyword">#include</span> <span class="string">&lt;cairo.h&gt;</span>
+<span class="keyword">#include</span> <span class="string">&lt;pango/pango.h&gt;</span>
+
+<span class="comment">/* Cairo custom drawing */</span>
+<span class="keyword">static void</span> <span class="function">draw_function</span>(
+    GtkDrawingArea *area,
+    cairo_t *cr,
+    <span class="keyword">int</span> width, <span class="keyword">int</span> height,
+    gpointer data)
+{
+    <span class="comment">/* Draw gradient */</span>
+    cairo_pattern_t *gradient =
+        cairo_pattern_create_linear(0, 0,
+                                   width, height);
+    cairo_pattern_add_color_stop_rgba(
+        gradient, 0, 0.2, 0.4, 0.8, 0.3);
+    <span class="comment">/* ... shapes, text, curves ... */</span>
+}
+
+<span class="comment">/* Widget event handlers */</span>
+<span class="keyword">static void</span> <span class="function">on_button_clicked</span>(
+    GtkButton *button, gpointer data)
+{
+    <span class="keyword">const char</span> *text =
+        gtk_button_get_label(button);
+    <span class="comment">/* Update status label */</span>
+}
+
+<span class="keyword">int</span> <span class="function">main</span>(<span class="keyword">int</span> argc, <span class="keyword">char</span> *argv[])
+{
+    GtkApplication *app;
+    app = gtk_application_new(
+        <span class="string">"org.discere.gtk.demo"</span>,
+        G_APPLICATION_DEFAULT_FLAGS);
+    g_signal_connect(app, <span class="string">"activate"</span>,
+                    G_CALLBACK(activate), NULL);
+    <span class="keyword">return</span> g_application_run(app, argc, argv);
+}
+                </div>
+
+                <div class="build-status">
+                    <h4>📦 Build Stack Status</h4>
+                    <div class="status-grid">
+                        <div class="status-item built">
+                            <strong>glib</strong><br>
+                            <small>✓ Built</small>
+                        </div>
+                        <div class="status-item built">
+                            <strong>pixman</strong><br>
+                            <small>✓ Ready</small>
+                        </div>
+                        <div class="status-item built">
+                            <strong>freetype</strong><br>
+                            <small>✓ Ready</small>
+                        </div>
+                        <div class="status-item built">
+                            <strong>harfbuzz</strong><br>
+                            <small>✓ Ready</small>
+                        </div>
+                        <div class="status-item built">
+                            <strong>cairo</strong><br>
+                            <small>✓ Ready</small>
+                        </div>
+                        <div class="status-item built">
+                            <strong>pango</strong><br>
+                            <small>✓ Ready</small>
+                        </div>
+                        <div class="status-item pending">
+                            <strong>GTK4</strong><br>
+                            <small>⏳ Build Required</small>
+                        </div>
+                    </div>
+                </div>
+
+                <h3>Build Commands</h3>
+                <div class="code-block">
+<span class="comment"># Build dependencies in order</span>
+<span class="keyword">deno</span> task build:wasm:meson  <span class="comment"># Each lib</span>
+
+<span class="comment"># Compile demo to WASM</span>
+<span class="keyword">emcc</span> comprehensive-rendering-demo.c \
+  `pkg-config --cflags gtk4` \
+  -o demo.js \
+  -sMODULARIZE=1 -sEXPORT_ES6=1 \
+  `pkg-config --libs gtk4` \
+  -sASYNCIFY=1 -sALLOW_MEMORY_GROWTH=1
+
+<span class="comment"># Run with web server</span>
+<span class="keyword">python3</span> -m http.server 8080
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>🎯 Key Features Demonstrated</h2>
+
+            <div class="content-grid" style="grid-template-columns: 1fr 1fr;">
+                <div>
+                    <h3>Widget System</h3>
+                    <ul class="feature-list">
+                        <li>GtkButton with CSS styling</li>
+                        <li>GtkEntry with placeholder text</li>
+                        <li>GtkScale (slider) with live updates</li>
+                        <li>GtkSwitch toggle widgets</li>
+                        <li>GtkProgressBar state display</li>
+                        <li>GtkSpinner animation</li>
+                        <li>GtkLabel with markup</li>
+                        <li>GtkNotebook tabbed interface</li>
+                        <li>GtkGrid layout manager</li>
+                        <li>GtkBox flexible layouts</li>
+                    </ul>
+                </div>
+
+                <div>
+                    <h3>Graphics & Text</h3>
+                    <ul class="feature-list">
+                        <li>Cairo drawing surfaces</li>
+                        <li>Linear gradients</li>
+                        <li>Shape primitives (arc, rectangle, path)</li>
+                        <li>Pango text layout</li>
+                        <li>Font descriptions and styling</li>
+                        <li>Text transformations (rotation)</li>
+                        <li>RGBA color with alpha blending</li>
+                        <li>Bezier curve paths</li>
+                        <li>Custom drawing callbacks</li>
+                        <li>Coordinate transformations</li>
+                    </ul>
+                </div>
+            </div>
+
+            <h3>Event Handling</h3>
+            <ul class="feature-list">
+                <li>Button click signals</li>
+                <li>Entry activation (Enter key)</li>
+                <li>Scale value-changed signals</li>
+                <li>Real-time UI updates via callbacks</li>
+                <li>Signal connection with user data passing</li>
+            </ul>
+
+            <h3>Application Structure</h3>
+            <ul class="feature-list">
+                <li>GtkApplication framework</li>
+                <li>Window management</li>
+                <li>Widget hierarchy and containers</li>
+                <li>Proper object lifecycle (ref/unref)</li>
+                <li>Signal-based architecture</li>
+            </ul>
+        </div>
+
+        <div class="card">
+            <h2>🚀 Next Steps</h2>
+            <p style="margin-bottom: 15px; color: #4a5568;">
+                To compile and run this demo:
+            </p>
+
+            <ol class="feature-list">
+                <li>Complete the GTK4 dependency stack build</li>
+                <li>Compile the C source with Emscripten and GTK4 flags</li>
+                <li>Deploy the resulting WASM + JS files</li>
+                <li>Serve via HTTP server and open in Chrome/Edge 113+</li>
+            </ol>
+
+            <div style="margin-top: 20px; text-align: center;">
+                <a href="comprehensive-rendering-demo.c" class="btn" download>
+                    📥 Download C Source Code
+                </a>
+                <a href="demo-full-stack.html" class="btn secondary">
+                    🔍 View Library Stack Demo
+                </a>
+            </div>
+
+            <div class="demo-preview">
+                <h3 style="color: #2d3748; margin-bottom: 15px;">Expected Output</h3>
+                <p style="color: #4a5568; margin-bottom: 15px;">
+                    When compiled and running, the demo will display a tabbed interface with 4 pages showcasing all rendering capabilities.
+                </p>
+                <p style="color: #718096;">
+                    <em>Build the full GTK stack to see this demo in action!</em>
+                </p>
+            </div>
+        </div>
+
+        <div class="card" style="background: linear-gradient(135deg, #667eea, #764ba2); color: white;">
+            <h2 style="color: white;">📚 Technical Stack</h2>
+            <div class="capability-grid">
+                <div class="capability-item">
+                    <h4>GTK4 4.20.1</h4>
+                    <p>Modern widget toolkit</p>
+                </div>
+                <div class="capability-item">
+                    <h4>Cairo 1.18</h4>
+                    <p>2D graphics library</p>
+                </div>
+                <div class="capability-item">
+                    <h4>Pango 1.51</h4>
+                    <p>Text layout engine</p>
+                </div>
+                <div class="capability-item">
+                    <h4>GdkPixbuf 2.42</h4>
+                    <p>Image loading</p>
+                </div>
+                <div class="capability-item">
+                    <h4>HarfBuzz 8.2</h4>
+                    <p>Text shaping</p>
+                </div>
+                <div class="capability-item">
+                    <h4>FreeType 2.13</h4>
+                    <p>Font rendering</p>
+                </div>
+                <div class="capability-item">
+                    <h4>Emscripten 4.0.15</h4>
+                    <p>WASM compiler</p>
+                </div>
+                <div class="capability-item">
+                    <h4>WebGPU</h4>
+                    <p>GPU acceleration</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
