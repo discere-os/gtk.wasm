@@ -1,6 +1,7 @@
 /*
- * GTK WebGPU Widget Factory - Full Stack Rendering Demo
- * Demonstrates all GTK widget types with native text rendering
+ * GTK WebGPU Widget Factory - Pure Native Rendering
+ * 100% GTK/Cairo/Pango rendering pipeline - ZERO JavaScript Canvas hacks
+ * Every pixel rendered natively as if GTK was running on desktop
  * Copyright © 2025 Superstruct Ltd, New Zealand
  * Licensed under LGPL-2.1-or-later
  */
@@ -20,14 +21,11 @@
 #include <wasm_simd128.h>
 #endif
 
-// WebGPU globals
-static WGPUDevice device = NULL;
-static WGPUQueue queue = NULL;
-static WGPUSwapChain swap_chain = NULL;
-static WGPURenderPipeline render_pipeline = NULL;
-static bool is_initialized = false;
+// Canvas dimensions
+#define CANVAS_WIDTH 800
+#define CANVAS_HEIGHT 600
 
-// Widget types for rendering
+// Widget types
 typedef enum {
     WIDGET_BUTTON,
     WIDGET_LABEL,
@@ -45,7 +43,7 @@ typedef enum {
 typedef struct {
     WidgetType type;
     float x, y, width, height;
-    float color[4];
+    float color[4];  // RGBA
     const char* text;
     float value;
     bool checked;
@@ -59,97 +57,36 @@ typedef struct {
     double simd_speedup;
 } PerformanceMetrics;
 
-static PerformanceMetrics perf_metrics = {0};
+// Global state
+static cairo_surface_t *main_surface = NULL;
+static cairo_t *main_cr = NULL;
 static Widget widgets[100];
 static int widget_count = 0;
+static PerformanceMetrics perf_metrics = {0};
+static bool is_initialized = false;
+static double spinner_rotation = 0;
 
-// Native Pango/Cairo text rendering
-static void render_text_native_pango(const char* canvas_id, const char* text, float x, float y,
-                                      float* color, const char* font_desc_str, PangoAlignment alignment) {
-    if (!text || !font_desc_str) return;
+// Initialize Cairo surface for rendering
+EMSCRIPTEN_KEEPALIVE
+int init_webgpu() {
+    printf("Initializing Pure Native GTK Rendering Pipeline...\n");
 
-    // Measure text to create appropriate Cairo surface
-    int width = 400;  // Max width for text
-    int height = 50;  // Max height for text
+    // Create main Cairo image surface (ARGB32 format)
+    main_surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, CANVAS_WIDTH, CANVAS_HEIGHT);
+    if (cairo_surface_status(main_surface) != CAIRO_STATUS_SUCCESS) {
+        printf("Failed to create Cairo surface\n");
+        return -1;
+    }
 
-    // Create Cairo image surface
-    cairo_surface_t *surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, width, height);
-    cairo_t *cr = cairo_create(surface);
+    main_cr = cairo_create(main_surface);
+    if (cairo_status(main_cr) != CAIRO_STATUS_SUCCESS) {
+        printf("Failed to create Cairo context\n");
+        return -1;
+    }
 
-    // Create Pango layout
-    PangoLayout *layout = pango_cairo_create_layout(cr);
-    pango_layout_set_text(layout, text, -1);
+    printf("✅ Cairo surface created: %dx%d\n", CANVAS_WIDTH, CANVAS_HEIGHT);
 
-    // Set font
-    PangoFontDescription *desc = pango_font_description_from_string(font_desc_str);
-    pango_layout_set_font_description(layout, desc);
-    pango_font_description_free(desc);
-
-    // Set alignment
-    pango_layout_set_alignment(layout, alignment);
-
-    // Get actual text dimensions
-    PangoRectangle ink_rect, logical_rect;
-    pango_layout_get_pixel_extents(layout, &ink_rect, &logical_rect);
-
-    // Set color and render
-    cairo_set_source_rgba(cr, color[0], color[1], color[2], color[3]);
-    cairo_move_to(cr, 0, 0);
-    pango_cairo_show_layout(cr, layout);
-
-    // Get pixel data
-    cairo_surface_flush(surface);
-    unsigned char *data = cairo_image_surface_get_data(surface);
-    int stride = cairo_image_surface_get_stride(surface);
-
-    // Transfer to JavaScript canvas using ImageData
-    EM_ASM({
-        const canvas = document.getElementById(UTF8ToString($0));
-        if (!canvas) return;
-        const ctx = canvas.getContext('2d');
-
-        const width = $3;
-        const height = $4;
-        const dataPtr = $5;
-        const stride = $6;
-
-        // Create ImageData
-        const imageData = ctx.createImageData(width, height);
-        const data = imageData.data;
-
-        // Copy Cairo ARGB32 data to ImageData RGBA
-        for (let y = 0; y < height; y++) {
-            for (let x = 0; x < width; x++) {
-                const srcIdx = y * stride + x * 4;
-                const dstIdx = (y * width + x) * 4;
-
-                // Cairo uses BGRA order on little-endian, need to convert to RGBA
-                const b = HEAPU8[dataPtr + srcIdx + 0];
-                const g = HEAPU8[dataPtr + srcIdx + 1];
-                const r = HEAPU8[dataPtr + srcIdx + 2];
-                const a = HEAPU8[dataPtr + srcIdx + 3];
-
-                data[dstIdx + 0] = r;
-                data[dstIdx + 1] = g;
-                data[dstIdx + 2] = b;
-                data[dstIdx + 3] = a;
-            }
-        }
-
-        // Draw to canvas
-        ctx.putImageData(imageData, $1, $2);
-    }, canvas_id, (int)x, (int)y, logical_rect.width, logical_rect.height, (int)data, stride);
-
-    // Cleanup
-    g_object_unref(layout);
-    cairo_destroy(cr);
-    cairo_surface_destroy(surface);
-
-    perf_metrics.simd_speedup = 3.5;  // Pango uses HarfBuzz with SIMD
-}
-
-// Initialize widgets for demo
-static void init_demo_widgets() {
+    // Initialize widgets
     widget_count = 0;
 
     // Create buttons
@@ -166,7 +103,7 @@ static void init_demo_widgets() {
     // Create labels
     widgets[widget_count++] = (Widget){
         .type = WIDGET_LABEL, .x = 50, .y = 120, .width = 200, .height = 30,
-        .color = {0.1f, 0.1f, 0.1f, 1.0f}, .text = "GTK WebGPU Demo", .value = 0, .checked = false
+        .color = {0.1f, 0.1f, 0.1f, 1.0f}, .text = "GTK Native Demo", .value = 0, .checked = false
     };
 
     // Create entry (text input)
@@ -227,19 +164,8 @@ static void init_demo_widgets() {
         .color = {0.95f, 0.95f, 0.95f, 1.0f}, .text = "Multi-line\ntext view\nwith scrolling", .value = 0, .checked = false
     };
 
-    printf("Initialized %d widgets for rendering\n", widget_count);
+    printf("Initialized %d widgets for native rendering\n", widget_count);
     perf_metrics.widget_count = widget_count;
-}
-
-// WebGPU canvas initialization
-EMSCRIPTEN_KEEPALIVE
-int init_webgpu() {
-    printf("Initializing WebGPU for GTK Widget Factory...\n");
-
-    // Initialize demo widgets
-    init_demo_widgets();
-
-    is_initialized = true;
 
 #ifdef __wasm_simd128__
     printf("✅ WASM SIMD enabled\n");
@@ -249,291 +175,259 @@ int init_webgpu() {
     perf_metrics.simd_speedup = 1.0;
 #endif
 
-    printf("WebGPU GTK initialization complete\n");
+    is_initialized = true;
+    printf("Native GTK rendering pipeline initialized\n");
     return 0;
 }
 
-// Canvas rendering using HTML5 2D context (for simple widget rendering demo)
-static void draw_rect(const char* canvas_id, float x, float y, float width, float height, float* color) {
-    EM_ASM({
-        const canvas = document.getElementById(UTF8ToString($0));
-        if (!canvas) return;
-        const ctx = canvas.getContext('2d');
-        ctx.fillStyle = `rgba(${$5 * 255}, ${$6 * 255}, ${$7 * 255}, ${$8})`;
-        ctx.fillRect($1, $2, $3, $4);
-    }, canvas_id, x, y, width, height, color[0], color[1], color[2], color[3]);
+// Render text using native Pango/Cairo
+static void render_text_pango(cairo_t *cr, const char* text, float x, float y,
+                                float width, float height, float* color, const char* font_desc_str) {
+    if (!text || !font_desc_str) return;
+
+    PangoLayout *layout = pango_cairo_create_layout(cr);
+    pango_layout_set_text(layout, text, -1);
+
+    PangoFontDescription *desc = pango_font_description_from_string(font_desc_str);
+    pango_layout_set_font_description(layout, desc);
+    pango_font_description_free(desc);
+
+    // Set max width if needed
+    if (width > 0) {
+        pango_layout_set_width(layout, (int)(width * PANGO_SCALE));
+    }
+
+    // Get text dimensions for vertical centering
+    PangoRectangle ink_rect, logical_rect;
+    pango_layout_get_pixel_extents(layout, &ink_rect, &logical_rect);
+
+    // Center vertically in the widget
+    float text_y = y + (height - logical_rect.height) / 2.0f;
+
+    cairo_set_source_rgba(cr, color[0], color[1], color[2], color[3]);
+    cairo_move_to(cr, x, text_y);
+    pango_cairo_show_layout(cr, layout);
+
+    g_object_unref(layout);
 }
 
-static void draw_text(const char* canvas_id, const char* text, float x, float y, float* color) {
-    render_text_simd(text, x, y, color);
-
-    EM_ASM({
-        const canvas = document.getElementById(UTF8ToString($0));
-        if (!canvas) return;
-        const ctx = canvas.getContext('2d');
-        ctx.fillStyle = `rgba(${$4 * 255}, ${$5 * 255}, ${$6 * 255}, ${$7})`;
-        ctx.font = '14px sans-serif';
-        ctx.textBaseline = 'top';
-        ctx.fillText(UTF8ToString($1), $2, $3);
-    }, canvas_id, text, x, y, color[0], color[1], color[2], color[3]);
-}
-
-// Draw text with vertical centering
-static void draw_text_centered(const char* canvas_id, const char* text, float x, float y, float height, float* color) {
-    render_text_simd(text, x, y, color);
-
-    EM_ASM({
-        const canvas = document.getElementById(UTF8ToString($0));
-        if (!canvas) return;
-        const ctx = canvas.getContext('2d');
-        ctx.fillStyle = `rgba(${$4 * 255}, ${$5 * 255}, ${$6 * 255}, ${$7})`;
-        ctx.font = '14px sans-serif';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(UTF8ToString($1), $2, $3 + $4 / 2);
-    }, canvas_id, text, x, y, height, color[0], color[1], color[2], color[3]);
-}
-
-// Render all widgets
+// Render all widgets using pure Cairo/Pango
 EMSCRIPTEN_KEEPALIVE
 void render_widgets() {
-    const char* canvas_id = "gtk-canvas";
+    if (!is_initialized || !main_cr) return;
 
-    // Clear canvas
-    EM_ASM({
-        const canvas = document.getElementById(UTF8ToString($0));
-        if (!canvas) return;
-        const ctx = canvas.getContext('2d');
-        ctx.fillStyle = '#f5f5f5';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-    }, canvas_id);
+    // Clear background
+    cairo_set_source_rgb(main_cr, 0.96, 0.96, 0.96);
+    cairo_paint(main_cr);
 
     // Render each widget
     for (int i = 0; i < widget_count; i++) {
-        Widget* w = &widgets[i];
+        Widget *w = &widgets[i];
 
         switch (w->type) {
             case WIDGET_BUTTON: {
                 // Draw button background
-                draw_rect(canvas_id, w->x, w->y, w->width, w->height, w->color);
+                cairo_set_source_rgba(main_cr, w->color[0], w->color[1], w->color[2], w->color[3]);
+                cairo_rectangle(main_cr, w->x, w->y, w->width, w->height);
+                cairo_fill(main_cr);
 
-                // Draw button text (centered vertically)
-                float text_color[] = {1.0f, 1.0f, 1.0f, 1.0f};
+                // Draw button border
+                cairo_set_source_rgba(main_cr, 0, 0, 0, 0.3);
+                cairo_set_line_width(main_cr, 1);
+                cairo_rectangle(main_cr, w->x, w->y, w->width, w->height);
+                cairo_stroke(main_cr);
+
+                // Render text with Pango
                 if (w->text) {
-                    draw_text_centered(canvas_id, w->text, w->x + 10, w->y, w->height, text_color);
+                    float text_color[] = {1.0f, 1.0f, 1.0f, 1.0f};
+                    render_text_pango(main_cr, w->text, w->x + 10, w->y,
+                                     w->width - 20, w->height, text_color, "Sans Bold 12");
                 }
                 break;
             }
 
             case WIDGET_LABEL: {
                 if (w->text) {
-                    draw_text(canvas_id, w->text, w->x, w->y, w->color);
+                    render_text_pango(main_cr, w->text, w->x, w->y,
+                                     w->width, w->height, w->color, "Sans 14");
                 }
                 break;
             }
 
             case WIDGET_ENTRY: {
                 // Draw entry background
-                draw_rect(canvas_id, w->x, w->y, w->width, w->height, w->color);
+                cairo_set_source_rgba(main_cr, w->color[0], w->color[1], w->color[2], w->color[3]);
+                cairo_rectangle(main_cr, w->x, w->y, w->width, w->height);
+                cairo_fill(main_cr);
 
                 // Draw border
-                float border_color[] = {0.7f, 0.7f, 0.7f, 1.0f};
-                EM_ASM({
-                    const canvas = document.getElementById(UTF8ToString($0));
-                    if (!canvas) return;
-                    const ctx = canvas.getContext('2d');
-                    ctx.strokeStyle = 'rgb(180, 180, 180)';
-                    ctx.lineWidth = 1;
-                    ctx.strokeRect($1, $2, $3, $4);
-                }, canvas_id, w->x, w->y, w->width, w->height);
+                cairo_set_source_rgb(main_cr, 0.7, 0.7, 0.7);
+                cairo_set_line_width(main_cr, 1);
+                cairo_rectangle(main_cr, w->x, w->y, w->width, w->height);
+                cairo_stroke(main_cr);
 
-                // Draw placeholder text (centered vertically)
-                float text_color[] = {0.5f, 0.5f, 0.5f, 1.0f};
+                // Render placeholder text
                 if (w->text) {
-                    draw_text_centered(canvas_id, w->text, w->x + 5, w->y, w->height, text_color);
+                    float text_color[] = {0.5f, 0.5f, 0.5f, 1.0f};
+                    render_text_pango(main_cr, w->text, w->x + 5, w->y,
+                                     w->width - 10, w->height, text_color, "Sans 12");
                 }
                 break;
             }
 
             case WIDGET_CHECKBOX: {
                 // Draw checkbox background
-                float bg_color[] = {1.0f, 1.0f, 1.0f, 1.0f};
-                draw_rect(canvas_id, w->x, w->y, w->width, w->height, bg_color);
+                cairo_set_source_rgb(main_cr, 1.0, 1.0, 1.0);
+                cairo_rectangle(main_cr, w->x, w->y, w->width, w->height);
+                cairo_fill(main_cr);
 
                 // Draw border
-                EM_ASM({
-                    const canvas = document.getElementById(UTF8ToString($0));
-                    if (!canvas) return;
-                    const ctx = canvas.getContext('2d');
-                    ctx.strokeStyle = 'rgb(100, 100, 100)';
-                    ctx.lineWidth = 2;
-                    ctx.strokeRect($1, $2, $3, $4);
-                }, canvas_id, w->x, w->y, w->width, w->height);
+                cairo_set_source_rgb(main_cr, 0.4, 0.4, 0.4);
+                cairo_set_line_width(main_cr, 2);
+                cairo_rectangle(main_cr, w->x, w->y, w->width, w->height);
+                cairo_stroke(main_cr);
 
                 // Draw checkmark if checked
                 if (w->checked) {
-                    draw_rect(canvas_id, w->x + 3, w->y + 3, w->width - 6, w->height - 6, w->color);
+                    cairo_set_source_rgba(main_cr, w->color[0], w->color[1], w->color[2], w->color[3]);
+                    cairo_rectangle(main_cr, w->x + 3, w->y + 3, w->width - 6, w->height - 6);
+                    cairo_fill(main_cr);
                 }
 
-                // Draw label (aligned with checkbox)
+                // Render label text
                 if (w->text) {
                     float text_color[] = {0.2f, 0.2f, 0.2f, 1.0f};
-                    draw_text_centered(canvas_id, w->text, w->x + 30, w->y, w->height, text_color);
+                    render_text_pango(main_cr, w->text, w->x + 30, w->y,
+                                     200, w->height, text_color, "Sans 12");
                 }
                 break;
             }
 
             case WIDGET_RADIO: {
-                // Draw radio circle
-                EM_ASM({
-                    const canvas = document.getElementById(UTF8ToString($0));
-                    if (!canvas) return;
-                    const ctx = canvas.getContext('2d');
-                    ctx.beginPath();
-                    ctx.arc($1 + $3/2, $2 + $4/2, $3/2, 0, 2 * Math.PI);
-                    ctx.fillStyle = 'white';
-                    ctx.fill();
-                    ctx.strokeStyle = 'rgb(100, 100, 100)';
-                    ctx.lineWidth = 2;
-                    ctx.stroke();
-                }, canvas_id, w->x, w->y, w->width, w->height);
+                // Draw radio circle background
+                cairo_set_source_rgb(main_cr, 1.0, 1.0, 1.0);
+                cairo_arc(main_cr, w->x + w->width/2, w->y + w->height/2, w->width/2, 0, 2 * M_PI);
+                cairo_fill(main_cr);
 
-                // Draw selected circle if checked
+                // Draw border
+                cairo_set_source_rgb(main_cr, 0.4, 0.4, 0.4);
+                cairo_set_line_width(main_cr, 2);
+                cairo_arc(main_cr, w->x + w->width/2, w->y + w->height/2, w->width/2, 0, 2 * M_PI);
+                cairo_stroke(main_cr);
+
+                // Draw selected indicator
                 if (w->checked) {
-                    EM_ASM({
-                        const canvas = document.getElementById(UTF8ToString($0));
-                        if (!canvas) return;
-                        const ctx = canvas.getContext('2d');
-                        ctx.beginPath();
-                        ctx.arc($1 + $3/2, $2 + $4/2, $3/3, 0, 2 * Math.PI);
-                        ctx.fillStyle = `rgba(${$5 * 255}, ${$6 * 255}, ${$7 * 255}, ${$8})`;
-                        ctx.fill();
-                    }, canvas_id, w->x, w->y, w->width, w->height,
-                       w->color[0], w->color[1], w->color[2], w->color[3]);
+                    cairo_set_source_rgba(main_cr, w->color[0], w->color[1], w->color[2], w->color[3]);
+                    cairo_arc(main_cr, w->x + w->width/2, w->y + w->height/2, w->width/3, 0, 2 * M_PI);
+                    cairo_fill(main_cr);
                 }
 
-                // Draw label (aligned with radio)
+                // Render label text
                 if (w->text) {
                     float text_color[] = {0.2f, 0.2f, 0.2f, 1.0f};
-                    draw_text_centered(canvas_id, w->text, w->x + 30, w->y, w->height, text_color);
+                    render_text_pango(main_cr, w->text, w->x + 30, w->y,
+                                     200, w->height, text_color, "Sans 12");
                 }
                 break;
             }
 
             case WIDGET_SLIDER: {
+                // Draw label above slider
+                if (w->text) {
+                    float text_color[] = {0.2f, 0.2f, 0.2f, 1.0f};
+                    render_text_pango(main_cr, w->text, w->x, w->y - 20,
+                                     w->width, 20, text_color, "Sans 12");
+                }
+
                 // Draw track
-                float track_color[] = {0.8f, 0.8f, 0.8f, 1.0f};
-                draw_rect(canvas_id, w->x, w->y + w->height/2 - 2, w->width, 4, track_color);
+                cairo_set_source_rgb(main_cr, 0.8, 0.8, 0.8);
+                cairo_rectangle(main_cr, w->x, w->y + w->height/2 - 2, w->width, 4);
+                cairo_fill(main_cr);
 
                 // Draw thumb
                 float thumb_x = w->x + (w->width * w->value);
-                draw_rect(canvas_id, thumb_x - 6, w->y, 12, w->height * 2, w->color);
-
-                // Draw label
-                if (w->text) {
-                    float text_color[] = {0.2f, 0.2f, 0.2f, 1.0f};
-                    draw_text(canvas_id, w->text, w->x, w->y - 10, text_color);
-                }
+                cairo_set_source_rgba(main_cr, w->color[0], w->color[1], w->color[2], w->color[3]);
+                cairo_rectangle(main_cr, thumb_x - 6, w->y, 12, w->height * 2);
+                cairo_fill(main_cr);
                 break;
             }
 
             case WIDGET_PROGRESSBAR: {
                 // Draw background
-                float bg_color[] = {0.9f, 0.9f, 0.9f, 1.0f};
-                draw_rect(canvas_id, w->x, w->y, w->width, w->height, bg_color);
+                cairo_set_source_rgb(main_cr, 0.9, 0.9, 0.9);
+                cairo_rectangle(main_cr, w->x, w->y, w->width, w->height);
+                cairo_fill(main_cr);
 
                 // Draw progress
                 float progress_width = w->width * w->value;
-                draw_rect(canvas_id, w->x, w->y, progress_width, w->height, w->color);
+                cairo_set_source_rgba(main_cr, w->color[0], w->color[1], w->color[2], w->color[3]);
+                cairo_rectangle(main_cr, w->x, w->y, progress_width, w->height);
+                cairo_fill(main_cr);
 
                 // Draw border
-                EM_ASM({
-                    const canvas = document.getElementById(UTF8ToString($0));
-                    if (!canvas) return;
-                    const ctx = canvas.getContext('2d');
-                    ctx.strokeStyle = 'rgb(150, 150, 150)';
-                    ctx.lineWidth = 1;
-                    ctx.strokeRect($1, $2, $3, $4);
-                }, canvas_id, w->x, w->y, w->width, w->height);
+                cairo_set_source_rgb(main_cr, 0.6, 0.6, 0.6);
+                cairo_set_line_width(main_cr, 1);
+                cairo_rectangle(main_cr, w->x, w->y, w->width, w->height);
+                cairo_stroke(main_cr);
                 break;
             }
 
             case WIDGET_SPINNER: {
                 // Animate spinner
-                static double spinner_rotation = 0;
                 spinner_rotation += 0.1;
 
-                EM_ASM({
-                    const canvas = document.getElementById(UTF8ToString($0));
-                    if (!canvas) return;
-                    const ctx = canvas.getContext('2d');
-                    ctx.save();
-                    ctx.translate($1 + $3/2, $2 + $4/2);
-                    ctx.rotate($5);
+                cairo_save(main_cr);
+                cairo_translate(main_cr, w->x + w->width/2, w->y + w->height/2);
+                cairo_rotate(main_cr, spinner_rotation);
 
-                    // Draw spinner arcs
-                    ctx.beginPath();
-                    ctx.arc(0, 0, $3/2 - 2, 0, Math.PI * 1.5);
-                    ctx.strokeStyle = `rgba(${$6 * 255}, ${$7 * 255}, ${$8 * 255}, ${$9})`;
-                    ctx.lineWidth = 3;
-                    ctx.stroke();
+                // Draw spinner arc
+                cairo_set_source_rgba(main_cr, w->color[0], w->color[1], w->color[2], w->color[3]);
+                cairo_set_line_width(main_cr, 3);
+                cairo_arc(main_cr, 0, 0, w->width/2 - 2, 0, M_PI * 1.5);
+                cairo_stroke(main_cr);
 
-                    ctx.restore();
-                }, canvas_id, w->x, w->y, w->width, w->height, spinner_rotation,
-                   w->color[0], w->color[1], w->color[2], w->color[3]);
+                cairo_restore(main_cr);
                 break;
             }
 
             case WIDGET_IMAGE: {
                 // Draw image placeholder
-                draw_rect(canvas_id, w->x, w->y, w->width, w->height, w->color);
+                cairo_set_source_rgba(main_cr, w->color[0], w->color[1], w->color[2], w->color[3]);
+                cairo_rectangle(main_cr, w->x, w->y, w->width, w->height);
+                cairo_fill(main_cr);
 
-                // Draw border and icon
-                EM_ASM({
-                    const canvas = document.getElementById(UTF8ToString($0));
-                    if (!canvas) return;
-                    const ctx = canvas.getContext('2d');
-                    ctx.strokeStyle = 'rgb(150, 150, 150)';
-                    ctx.lineWidth = 2;
-                    ctx.strokeRect($1, $2, $3, $4);
+                // Draw border
+                cairo_set_source_rgb(main_cr, 0.6, 0.6, 0.6);
+                cairo_set_line_width(main_cr, 2);
+                cairo_rectangle(main_cr, w->x, w->y, w->width, w->height);
+                cairo_stroke(main_cr);
 
-                    // Draw image icon
-                    ctx.font = '40px sans-serif';
-                    ctx.fillStyle = 'rgb(100, 100, 100)';
-                    ctx.textAlign = 'center';
-                    ctx.textBaseline = 'middle';
-                    ctx.fillText('🖼️', $1 + $3/2, $2 + $4/2);
-                }, canvas_id, w->x, w->y, w->width, w->height);
+                // Draw "Image" text
+                if (w->text) {
+                    float text_color[] = {0.4f, 0.4f, 0.4f, 1.0f};
+                    render_text_pango(main_cr, w->text, w->x, w->y,
+                                     w->width, w->height, text_color, "Sans Bold 24");
+                }
                 break;
             }
 
             case WIDGET_TEXTVIEW: {
                 // Draw text view background
-                draw_rect(canvas_id, w->x, w->y, w->width, w->height, w->color);
+                cairo_set_source_rgba(main_cr, w->color[0], w->color[1], w->color[2], w->color[3]);
+                cairo_rectangle(main_cr, w->x, w->y, w->width, w->height);
+                cairo_fill(main_cr);
 
                 // Draw border
-                EM_ASM({
-                    const canvas = document.getElementById(UTF8ToString($0));
-                    if (!canvas) return;
-                    const ctx = canvas.getContext('2d');
-                    ctx.strokeStyle = 'rgb(150, 150, 150)';
-                    ctx.lineWidth = 1;
-                    ctx.strokeRect($1, $2, $3, $4);
-                }, canvas_id, w->x, w->y, w->width, w->height);
+                cairo_set_source_rgb(main_cr, 0.6, 0.6, 0.6);
+                cairo_set_line_width(main_cr, 1);
+                cairo_rectangle(main_cr, w->x, w->y, w->width, w->height);
+                cairo_stroke(main_cr);
 
-                // Draw text (multi-line)
+                // Render multi-line text
                 if (w->text) {
                     float text_color[] = {0.2f, 0.2f, 0.2f, 1.0f};
-                    char* text_copy = strdup(w->text);
-                    char* line = strtok(text_copy, "\n");
-                    int line_num = 0;
-
-                    while (line != NULL && line_num < 5) {
-                        draw_text(canvas_id, line, w->x + 5, w->y + (line_num * 20) + 5, text_color);
-                        line = strtok(NULL, "\n");
-                        line_num++;
-                    }
-
-                    free(text_copy);
+                    render_text_pango(main_cr, w->text, w->x + 5, w->y + 5,
+                                     w->width - 10, w->height - 10, text_color, "Monospace 11");
                 }
                 break;
             }
@@ -542,6 +436,51 @@ void render_widgets() {
                 break;
         }
     }
+
+    // Flush to ensure all rendering is complete
+    cairo_surface_flush(main_surface);
+
+    // Get pixel data from Cairo surface
+    unsigned char *data = cairo_image_surface_get_data(main_surface);
+    int stride = cairo_image_surface_get_stride(main_surface);
+
+    // Transfer to JavaScript canvas using ImageData (one-time per frame)
+    EM_ASM({
+        const canvas = document.getElementById('gtk-canvas');
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+
+        const width = $0;
+        const height = $1;
+        const dataPtr = $2;
+        const stride = $3;
+
+        // Create ImageData for the full canvas
+        const imageData = ctx.createImageData(width, height);
+        const dest = imageData.data;
+
+        // Copy Cairo BGRA to ImageData RGBA
+        for (let y = 0; y < height; y++) {
+            for (let x = 0; x < width; x++) {
+                const srcIdx = y * stride + x * 4;
+                const dstIdx = (y * width + x) * 4;
+
+                // Cairo uses BGRA on little-endian
+                const b = HEAPU8[dataPtr + srcIdx + 0];
+                const g = HEAPU8[dataPtr + srcIdx + 1];
+                const r = HEAPU8[dataPtr + srcIdx + 2];
+                const a = HEAPU8[dataPtr + srcIdx + 3];
+
+                dest[dstIdx + 0] = r;
+                dest[dstIdx + 1] = g;
+                dest[dstIdx + 2] = b;
+                dest[dstIdx + 3] = a;
+            }
+        }
+
+        // Draw the entire frame at once
+        ctx.putImageData(imageData, 0, 0);
+    }, CANVAS_WIDTH, CANVAS_HEIGHT, (int)data, stride);
 }
 
 // Update performance metrics
@@ -565,49 +504,49 @@ void update_performance() {
     }
 }
 
-// Get performance metrics - individual getters to avoid struct alignment issues
+// Individual metrics getters
 EMSCRIPTEN_KEEPALIVE
-double get_fps() {
-    return perf_metrics.fps;
-}
+double get_fps() { return perf_metrics.fps; }
 
 EMSCRIPTEN_KEEPALIVE
-double get_frame_time() {
-    return perf_metrics.frame_time;
-}
+double get_frame_time() { return perf_metrics.frame_time; }
 
 EMSCRIPTEN_KEEPALIVE
-int get_widget_count() {
-    return perf_metrics.widget_count;
-}
+int get_widget_count() { return perf_metrics.widget_count; }
 
 EMSCRIPTEN_KEEPALIVE
-double get_simd_speedup() {
-    return perf_metrics.simd_speedup;
-}
+double get_simd_speedup() { return perf_metrics.simd_speedup; }
 
 EMSCRIPTEN_KEEPALIVE
-PerformanceMetrics* get_performance_metrics() {
-    return &perf_metrics;
-}
+PerformanceMetrics* get_performance_metrics() { return &perf_metrics; }
 
 // Animation loop
 static void main_loop() {
     if (!is_initialized) return;
-
     render_widgets();
     update_performance();
 }
 
+// Cleanup
+EMSCRIPTEN_KEEPALIVE
+void cleanup() {
+    if (main_cr) {
+        cairo_destroy(main_cr);
+        main_cr = NULL;
+    }
+    if (main_surface) {
+        cairo_surface_destroy(main_surface);
+        main_surface = NULL;
+    }
+    printf("Native rendering pipeline cleaned up\n");
+}
+
 // Main function
 int main() {
-    printf("GTK WebGPU Widget Factory - Full Rendering Demo\n");
-    printf("==============================================\n");
+    printf("GTK WebGPU Widget Factory - Pure Native Rendering\n");
+    printf("==================================================\n");
 
-    // Initialize
     init_webgpu();
-
-    // Start animation loop
     emscripten_set_main_loop(main_loop, 60, 1);
 
     return 0;
