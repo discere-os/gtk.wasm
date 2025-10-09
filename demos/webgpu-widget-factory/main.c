@@ -11,6 +11,7 @@
 #include <webgpu/webgpu.h>
 #include <cairo.h>
 #include <pango/pangocairo.h>
+#include <fontconfig/fontconfig.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -89,30 +90,25 @@ int init_webgpu() {
 
     printf("✅ Cairo surface created: %dx%d\n", CANVAS_WIDTH, CANVAS_HEIGHT);
 
-    // Initialize Pango type system explicitly
-    // In WASM MAIN_MODULE, we must force type registration in dependency order
-    printf("Initializing Pango type system...\n");
+    // Initialize fontconfig with minimal config for WASM
+    printf("Initializing fontconfig...\n");
 
-    // Register base types first (dependencies before dependents)
-    extern GType pango_font_map_get_type(void);
-    extern GType pango_fc_font_map_get_type(void);
-    extern GType pango_cairo_font_map_get_type(void);
-    extern GType pango_cairo_fc_font_map_get_type(void);
+    // Create minimal fontconfig configuration in memory
+    FcConfig *config = FcConfigCreate();
+    if (!config) {
+        printf("❌ Failed to create fontconfig configuration\n");
+        return -1;
+    }
 
-    printf("Registering PangoFontMap...\n");
-    pango_font_map_get_type();
+    // Set as default config
+    FcConfigSetCurrent(config);
 
-    printf("Registering PangoFcFontMap...\n");
-    pango_fc_font_map_get_type();
+    printf("✅ Fontconfig initialized with minimal config\n");
 
-    printf("Registering PangoCairoFontMap interface...\n");
-    pango_cairo_font_map_get_type();
+    // Initialize Pango/Cairo font system
+    // pango_cairo_font_map_new() returns PangoCairoFcFontMap (FreeType backend)
+    printf("Initializing Pango font system...\n");
 
-    printf("Registering PangoCairoFcFontMap...\n");
-    GType fontmap_type = pango_cairo_fc_font_map_get_type();
-    printf("✅ All Pango types registered, fontmap type: %lu\n", (unsigned long)fontmap_type);
-
-    // Now create the font map - the type is registered so this should work
     global_fontmap = pango_cairo_font_map_new();
     if (global_fontmap) {
         pango_cairo_font_map_set_default((PangoCairoFontMap*)global_fontmap);
@@ -120,10 +116,10 @@ int init_webgpu() {
         if (global_pango_context) {
             printf("✅ Pango font map and context initialized\n");
         } else {
-            printf("⚠️  Font map created but context creation failed\n");
+            printf("⚠️ Font map created but context creation failed\n");
         }
     } else {
-        printf("❌ Could not create Pango font map even after type registration\n");
+        printf("❌ Could not create Pango font map\n");
         return -1;
     }
 
