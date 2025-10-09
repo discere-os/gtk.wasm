@@ -1,0 +1,24 @@
+{
+  "name": "gtk.wasm",
+  "version": "4.20.1",
+  "dependencies": [
+    "zlib:latest",
+    "libexpat:latest",
+    "libffi:latest",
+    "libpng:latest",
+    "libjpeg-turbo:latest",
+    "libtiff:latest",
+    "pixman:latest",
+    "freetype:latest",
+    "fontconfig:latest",
+    "fribidi:latest",
+    "harfbuzz:latest",
+    "cairo:latest",
+    "gdk-pixbuf:latest",
+    "pango:latest",
+    "graphene:latest",
+    "glib:latest",
+    "epoxy:latest",
+    "icu:latest"
+  ]
+}

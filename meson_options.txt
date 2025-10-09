@@ -1,0 +1,30 @@
+# GTK WASM Build Options
+# Copyright 2025 Superstruct Ltd
+
+# WASM build configuration
+option('wasm_build_type',
+  type: 'combo',
+  choices: ['minimal', 'standard', 'webgpu'],
+  value: 'standard',
+  description: 'WASM build profile: minimal (smallest), standard (SIMD+threads), webgpu (full demo)')
+
+option('wasm_webgpu',
+  type: 'boolean',
+  value: true,
+  description: 'Enable WebGPU renderer support')
+
+option('wasm_simd',
+  type: 'boolean',
+  value: true,
+  description: 'Enable WASM SIMD optimizations')
+
+option('wasm_threading',
+  type: 'boolean',
+  value: true,
+  description: 'Enable pthreads support')
+
+option('wasm_optimize',
+  type: 'combo',
+  choices: ['size', 'speed', 'balanced'],
+  value: 'balanced',
+  description: 'Optimization target')
