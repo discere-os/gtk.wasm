@@ -53,6 +53,8 @@ demos/**/*.wasm
 demos/**/*-main.js
 demos/**/*-native.js
 demos/**/*_minimal_*.js
+*-main.js
+*-native.js
 
 # Experimental build scripts (keep only main build.sh)
 demos/**/build-*.sh
