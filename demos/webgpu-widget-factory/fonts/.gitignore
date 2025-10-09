@@ -1,0 +1,5 @@
+# Downloaded font files (run download-roboto.sh to get them)
+*.ttf
+*.otf
+*.woff
+*.woff2

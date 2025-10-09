@@ -18,6 +18,9 @@
 #include <stdbool.h>
 #include <math.h>
 
+// For setenv
+extern int setenv(const char *name, const char *value, int overwrite);
+
 #ifdef __wasm_simd128__
 #include <wasm_simd128.h>
 #endif
@@ -90,38 +93,110 @@ int init_webgpu() {
 
     printf("✅ Cairo surface created: %dx%d\n", CANVAS_WIDTH, CANVAS_HEIGHT);
 
-    // Initialize fontconfig with minimal config for WASM
+    // Initialize fontconfig with embedded fonts
     printf("Initializing fontconfig...\n");
 
-    // Create minimal fontconfig configuration in memory
-    FcConfig *config = FcConfigCreate();
+    // Initialize fontconfig library first
+    if (!FcInit()) {
+        printf("❌ FcInit() failed\n");
+        return -1;
+    }
+    printf("✅ FcInit() completed\n");
+
+    // Get current config and add fonts to it
+    FcConfig *config = FcConfigGetCurrent();
     if (!config) {
-        printf("❌ Failed to create fontconfig configuration\n");
+        printf("❌ Failed to get fontconfig configuration\n");
         return -1;
     }
 
-    // Set as default config
-    FcConfigSetCurrent(config);
+    printf("✅ Got fontconfig configuration\n");
 
-    printf("✅ Fontconfig initialized with minimal config\n");
+    // Try adding fonts individually first
+    const char* font_files[] = {
+        "/fonts/Roboto-Regular.ttf",
+        "/fonts/Roboto-Bold.ttf",
+        "/fonts/Roboto-Italic.ttf",
+        "/fonts/Roboto-BoldItalic.ttf",
+        NULL
+    };
 
-    // Initialize Pango/Cairo font system
-    // pango_cairo_font_map_new() returns PangoCairoFcFontMap (FreeType backend)
-    printf("Initializing Pango font system...\n");
+    int fonts_added = 0;
+    for (int i = 0; font_files[i] != NULL; i++) {
+        printf("Adding font file: %s\n", font_files[i]);
 
-    global_fontmap = pango_cairo_font_map_new();
-    if (global_fontmap) {
-        pango_cairo_font_map_set_default((PangoCairoFontMap*)global_fontmap);
-        global_pango_context = pango_font_map_create_context(global_fontmap);
-        if (global_pango_context) {
-            printf("✅ Pango font map and context initialized\n");
-        } else {
-            printf("⚠️ Font map created but context creation failed\n");
+        // First verify the file can be opened
+        FILE *test = fopen(font_files[i], "rb");
+        if (!test) {
+            printf("  ❌ Cannot open file %s\n", font_files[i]);
+            continue;
         }
+        fseek(test, 0, SEEK_END);
+        long size = ftell(test);
+        fclose(test);
+        printf("  File size: %ld bytes\n", size);
+
+        FcBool result = FcConfigAppFontAddFile(config, (const FcChar8*)font_files[i]);
+        if (result) {
+            printf("  ✅ Successfully added %s\n", font_files[i]);
+            fonts_added++;
+        } else {
+            printf("  ❌ FcConfigAppFontAddFile failed for %s\n", font_files[i]);
+        }
+    }
+
+    printf("Added %d font files\n", fonts_added);
+
+    // Build fonts before setting as current
+    printf("Building font cache...\n");
+    FcBool build_result = FcConfigBuildFonts(config);
+    printf("FcConfigBuildFonts returned: %d\n", build_result);
+
+    // Set as current config AFTER building
+    FcBool set_result = FcConfigSetCurrent(config);
+    printf("FcConfigSetCurrent returned: %d\n", set_result);
+
+    // List available fonts for debugging
+    FcPattern *pat = FcPatternCreate();
+    FcObjectSet *os = FcObjectSetBuild(FC_FAMILY, FC_STYLE, FC_FILE, NULL);
+    FcFontSet *fs = FcFontList(config, pat, os);
+
+    if (fs) {
+        printf("Found %d fonts:\n", fs->nfont);
+        for (int i = 0; i < fs->nfont && i < 10; i++) {
+            FcChar8 *family, *style, *file;
+            if (FcPatternGetString(fs->fonts[i], FC_FAMILY, 0, &family) == FcResultMatch &&
+                FcPatternGetString(fs->fonts[i], FC_STYLE, 0, &style) == FcResultMatch &&
+                FcPatternGetString(fs->fonts[i], FC_FILE, 0, &file) == FcResultMatch) {
+                printf("  - %s %s (%s)\n", family, style, file);
+            }
+        }
+        FcFontSetDestroy(fs);
     } else {
-        printf("❌ Could not create Pango font map\n");
+        printf("❌ FcFontList returned NULL\n");
+    }
+    FcObjectSetDestroy(os);
+    FcPatternDestroy(pat);
+
+    if (fs && fs->nfont == 0) {
+        printf("❌ No fonts found - cannot initialize Pango\n");
         return -1;
     }
+
+    printf("✅ Fontconfig initialized with %d fonts\n", fs ? fs->nfont : 0);
+
+    if (fs->nfont < 4) {
+        printf("⚠️  Warning: Expected 4 fonts but only found %d\n", fs->nfont);
+        printf("⚠️  Proceeding with limited font support\n");
+    }
+
+    // Skip Pango - use Cairo toy font API directly
+    // This avoids the Pango initialization crash and works with fontconfig
+    printf("✅ Skipping Pango, using Cairo toy font API with fontconfig\n");
+
+    // Set globals to NULL since we're not using Pango
+    global_fontmap = NULL;
+    global_pango_context = NULL;
 
     // Initialize widgets
     widget_count = 0;
@@ -217,35 +292,43 @@ int init_webgpu() {
     return 0;
 }
 
-// Render text using native Pango/Cairo
-static void render_text_pango(cairo_t *cr, const char* text, float x, float y,
+// Render text using Cairo toy font API (no Pango)
+static void render_text_cairo(cairo_t *cr, const char* text, float x, float y,
                                 float width, float height, float* color, const char* font_desc_str) {
-    if (!text || !font_desc_str) return;
+    if (!text) return;
 
-    PangoLayout *layout = pango_cairo_create_layout(cr);
-    pango_layout_set_text(layout, text, -1);
+    // Parse simple font description (e.g., "Sans Bold 12")
+    const char* family = "sans-serif";
+    cairo_font_slant_t slant = CAIRO_FONT_SLANT_NORMAL;
+    cairo_font_weight_t weight = CAIRO_FONT_WEIGHT_NORMAL;
+    double size = 12.0;
 
-    PangoFontDescription *desc = pango_font_description_from_string(font_desc_str);
-    pango_layout_set_font_description(layout, desc);
-    pango_font_description_free(desc);
+    if (font_desc_str) {
+        if (strstr(font_desc_str, "Bold")) weight = CAIRO_FONT_WEIGHT_BOLD;
+        if (strstr(font_desc_str, "Italic")) slant = CAIRO_FONT_SLANT_ITALIC;
+        if (strstr(font_desc_str, "Monospace")) family = "monospace";
 
-    // Set max width if needed
-    if (width > 0) {
-        pango_layout_set_width(layout, (int)(width * PANGO_SCALE));
+        // Extract size
+        const char* size_str = font_desc_str;
+        while (*size_str && !(*size_str >= '0' && *size_str <= '9')) size_str++;
+        if (*size_str) size = atof(size_str);
     }
 
-    // Get text dimensions for vertical centering
-    PangoRectangle ink_rect, logical_rect;
-    pango_layout_get_pixel_extents(layout, &ink_rect, &logical_rect);
+    // Set font
+    cairo_select_font_face(cr, family, slant, weight);
+    cairo_set_font_size(cr, size);
 
-    // Center vertically in the widget
-    float text_y = y + (height - logical_rect.height) / 2.0f;
+    // Get text extents for positioning
+    cairo_text_extents_t extents;
+    cairo_text_extents(cr, text, &extents);
 
+    // Center vertically
+    float text_y = y + (height + extents.height) / 2.0f;
+
+    // Render text
     cairo_set_source_rgba(cr, color[0], color[1], color[2], color[3]);
     cairo_move_to(cr, x, text_y);
-    pango_cairo_show_layout(cr, layout);
-
-    g_object_unref(layout);
+    cairo_show_text(cr, text);
 }
 
 // Render all widgets using pure Cairo/Pango
@@ -274,10 +357,10 @@ void render_widgets() {
                 cairo_rectangle(main_cr, w->x, w->y, w->width, w->height);
                 cairo_stroke(main_cr);
 
-                // Render text with Pango
+                // Render text with Cairo
                 if (w->text) {
                     float text_color[] = {1.0f, 1.0f, 1.0f, 1.0f};
-                    render_text_pango(main_cr, w->text, w->x + 10, w->y,
+                    render_text_cairo(main_cr, w->text, w->x + 10, w->y,
                                      w->width - 20, w->height, text_color, "Sans Bold 12");
                 }
                 break;
@@ -285,7 +368,7 @@ void render_widgets() {
 
             case WIDGET_LABEL: {
                 if (w->text) {
-                    render_text_pango(main_cr, w->text, w->x, w->y,
+                    render_text_cairo(main_cr, w->text, w->x, w->y,
                                      w->width, w->height, w->color, "Sans 14");
                 }
                 break;
@@ -306,7 +389,7 @@ void render_widgets() {
                 // Render placeholder text
                 if (w->text) {
                     float text_color[] = {0.5f, 0.5f, 0.5f, 1.0f};
-                    render_text_pango(main_cr, w->text, w->x + 5, w->y,
+                    render_text_cairo(main_cr, w->text, w->x + 5, w->y,
                                      w->width - 10, w->height, text_color, "Sans 12");
                 }
                 break;
@@ -334,7 +417,7 @@ void render_widgets() {
                 // Render label text
                 if (w->text) {
                     float text_color[] = {0.2f, 0.2f, 0.2f, 1.0f};
-                    render_text_pango(main_cr, w->text, w->x + 30, w->y,
+                    render_text_cairo(main_cr, w->text, w->x + 30, w->y,
                                      200, w->height, text_color, "Sans 12");
                 }
                 break;
@@ -362,7 +445,7 @@ void render_widgets() {
                 // Render label text
                 if (w->text) {
                     float text_color[] = {0.2f, 0.2f, 0.2f, 1.0f};
-                    render_text_pango(main_cr, w->text, w->x + 30, w->y,
+                    render_text_cairo(main_cr, w->text, w->x + 30, w->y,
                                      200, w->height, text_color, "Sans 12");
                 }
                 break;
@@ -372,7 +455,7 @@ void render_widgets() {
                 // Draw label above slider
                 if (w->text) {
                     float text_color[] = {0.2f, 0.2f, 0.2f, 1.0f};
-                    render_text_pango(main_cr, w->text, w->x, w->y - 20,
+                    render_text_cairo(main_cr, w->text, w->x, w->y - 20,
                                      w->width, 20, text_color, "Sans 12");
                 }
 
@@ -442,7 +525,7 @@ void render_widgets() {
                 // Draw "Image" text
                 if (w->text) {
                     float text_color[] = {0.4f, 0.4f, 0.4f, 1.0f};
-                    render_text_pango(main_cr, w->text, w->x, w->y,
+                    render_text_cairo(main_cr, w->text, w->x, w->y,
                                      w->width, w->height, text_color, "Sans Bold 24");
                 }
                 break;
@@ -463,7 +546,7 @@ void render_widgets() {
                 // Render multi-line text
                 if (w->text) {
                     float text_color[] = {0.2f, 0.2f, 0.2f, 1.0f};
-                    render_text_pango(main_cr, w->text, w->x + 5, w->y + 5,
+                    render_text_cairo(main_cr, w->text, w->x + 5, w->y + 5,
                                      w->width - 10, w->height - 10, text_color, "Monospace 11");
                 }
                 break;
@@ -578,13 +661,49 @@ void cleanup() {
     printf("Native rendering pipeline cleaned up\n");
 }
 
-// Main function
+// Main function - wait for filesystem to be ready
 int main() {
     printf("GTK WebGPU Widget Factory - Pure Native Rendering\n");
     printf("==================================================\n");
 
-    init_webgpu();
-    emscripten_set_main_loop(main_loop, 60, 1);
-
+    // Note: init_webgpu() will be called automatically after preloaded files are ready
+    // This is handled by Emscripten's FS.init() completing
     return 0;
+}
+
+// Check if embedded fonts are available
+static bool fonts_available() {
+    // Try to open one of the font files
+    FILE *f = fopen("/fonts/Roboto-Regular.ttf", "rb");
+    if (f) {
+        fclose(f);
+        return true;
+    }
+    return false;
+}
+
+// Called after filesystem is ready
+EMSCRIPTEN_KEEPALIVE
+void start_demo() {
+    printf("Starting demo after filesystem ready...\n");
+
+    // Check if fonts are available
+    if (!fonts_available()) {
+        printf("⚠️  Fonts not yet loaded, retrying...\n");
+        // Schedule retry in 50ms
+        EM_ASM({
+            setTimeout(function() {
+                Module._start_demo();
+            }, 50);
+        });
+        return;
+    }
+
+    printf("✅ Fonts are available, initializing...\n");
+
+    if (init_webgpu() == 0) {
+        emscripten_set_main_loop(main_loop, 60, 1);
+    } else {
+        printf("Failed to initialize, exiting\n");
+    }
 }
