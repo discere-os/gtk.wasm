@@ -60,6 +60,8 @@ typedef struct {
 // Global state
 static cairo_surface_t *main_surface = NULL;
 static cairo_t *main_cr = NULL;
+static PangoFontMap *global_fontmap = NULL;
+static PangoContext *global_pango_context = NULL;
 static Widget widgets[100];
 static int widget_count = 0;
 static PerformanceMetrics perf_metrics = {0};
@@ -72,6 +74,7 @@ int init_webgpu() {
     printf("Initializing Pure Native GTK Rendering Pipeline...\n");
 
     // Create main Cairo image surface (ARGB32 format)
+    // Do this FIRST before any Pango operations
     main_surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, CANVAS_WIDTH, CANVAS_HEIGHT);
     if (cairo_surface_status(main_surface) != CAIRO_STATUS_SUCCESS) {
         printf("Failed to create Cairo surface\n");
@@ -85,6 +88,44 @@ int init_webgpu() {
     }
 
     printf("✅ Cairo surface created: %dx%d\n", CANVAS_WIDTH, CANVAS_HEIGHT);
+
+    // Initialize Pango type system explicitly
+    // In WASM MAIN_MODULE, we must force type registration in dependency order
+    printf("Initializing Pango type system...\n");
+
+    // Register base types first (dependencies before dependents)
+    extern GType pango_font_map_get_type(void);
+    extern GType pango_fc_font_map_get_type(void);
+    extern GType pango_cairo_font_map_get_type(void);
+    extern GType pango_cairo_fc_font_map_get_type(void);
+
+    printf("Registering PangoFontMap...\n");
+    pango_font_map_get_type();
+
+    printf("Registering PangoFcFontMap...\n");
+    pango_fc_font_map_get_type();
+
+    printf("Registering PangoCairoFontMap interface...\n");
+    pango_cairo_font_map_get_type();
+
+    printf("Registering PangoCairoFcFontMap...\n");
+    GType fontmap_type = pango_cairo_fc_font_map_get_type();
+    printf("✅ All Pango types registered, fontmap type: %lu\n", (unsigned long)fontmap_type);
+
+    // Now create the font map - the type is registered so this should work
+    global_fontmap = pango_cairo_font_map_new();
+    if (global_fontmap) {
+        pango_cairo_font_map_set_default((PangoCairoFontMap*)global_fontmap);
+        global_pango_context = pango_font_map_create_context(global_fontmap);
+        if (global_pango_context) {
+            printf("✅ Pango font map and context initialized\n");
+        } else {
+            printf("⚠️  Font map created but context creation failed\n");
+        }
+    } else {
+        printf("❌ Could not create Pango font map even after type registration\n");
+        return -1;
+    }
 
     // Initialize widgets
     widget_count = 0;

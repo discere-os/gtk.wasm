@@ -191,7 +191,7 @@
 
                 // Import the WASM module with cache busting
                 const cacheBuster = Date.now();
-                const GTKWidgetFactory = (await import(`./gtk-widget-factory.js?v=${cacheBuster}`)).default;
+                const GTKWidgetFactory = (await import(`./gtk-widget-factory-native.js?v=${cacheBuster}`)).default;
 
                 log('Initializing WASM module...');
 
