@@ -47,4 +47,13 @@ emsdk_env.sh
 *.log
 *.o
 a.out.js
-gtk-webgpu-main.js
+
+# Demo build artifacts (generated WASM glue code)
+demos/**/*.wasm
+demos/**/*-main.js
+demos/**/*-native.js
+demos/**/*_minimal_*.js
+
+# Experimental build scripts (keep only main build.sh)
+demos/**/build-*.sh
+!demos/**/build.sh
