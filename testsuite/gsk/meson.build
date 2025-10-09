@@ -689,3 +689,7 @@ foreach t : internal_tests
 endforeach
 
 
+
+# WASM Compare Tests
+subdir('wasm')
+

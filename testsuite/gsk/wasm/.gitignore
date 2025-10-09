@@ -1,0 +1,19 @@
+# Test outputs
+test-output/
+*.out.png
+*.diff.png
+*.ref.png
+test-results.json
+
+# Build artifacts
+*.wasm
+*.js
+*.wasm.map
+*.js.map
+gsk-node-renderer
+build/
+.build/
+
+# Deno
+deno.lock
+.deno/

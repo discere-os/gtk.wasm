@@ -1,0 +1,33 @@
+{
+  "name": "@gtk-wasm/gsk-compare-tests",
+  "version": "1.0.0",
+  "tasks": {
+    "test": "deno run --allow-read --allow-write run-compare-tests.ts",
+    "test:single": "deno run --allow-read --allow-write run-compare-tests.ts --test",
+    "test:verbose": "deno run --allow-read --allow-write run-compare-tests.ts --verbose",
+    "help": "deno run run-compare-tests.ts --help"
+  },
+  "imports": {
+    "canvas": "https://deno.land/x/canvas@v1.4.2/mod.ts",
+    "std/": "https://deno.land/std@0.208.0/",
+    "pixelmatch": "npm:pixelmatch@5.3.0",
+    "pngjs": "npm:pngjs@7.0.0"
+  },
+  "compilerOptions": {
+    "lib": ["deno.window", "dom", "esnext"],
+    "strict": true
+  },
+  "fmt": {
+    "useTabs": false,
+    "lineWidth": 100,
+    "indentWidth": 2,
+    "semiColons": true,
+    "singleQuote": false,
+    "proseWrap": "preserve"
+  },
+  "lint": {
+    "rules": {
+      "tags": ["recommended"]
+    }
+  }
+}
