@@ -1,0 +1,216 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ wasm ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ wasm ]
+
+jobs:
+  test:
+    name: Test Suite (Deno)
+    runs-on: [self-hosted, docker, wasm, emscripten]
+    container:
+      image: ghcr.io/discere-os/wasm-builder:main-b23d443
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Type check
+        run: deno check src/lib/index.ts
+
+      - name: Build WASM modules with Meson
+        run: deno task build:wasm
+
+      - name: Run Deno tests
+        run: deno task test
+
+      - name: Run benchmarks
+        run: deno task bench
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: wasm-modules
+          path: |
+            install/wasm/
+          retention-days: 7
+
+  build:
+    name: Build Distribution
+    runs-on: [self-hosted, docker, wasm, emscripten]
+    needs: test
+    container:
+      image: ghcr.io/discere-os/wasm-builder:main-b23d443
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build WASM modules
+        run: deno task build:wasm
+
+      - name: Fix artifact permissions
+        run: |
+          # Ensure artifacts are readable by runner (files created as root in container)
+          sudo chown -R $(id -u):$(id -g) install/ || chown -R $(id -u):$(id -g) install/
+          chmod -R u+rw,go+r install/
+
+      - name: Generate WASM Build Summary
+        run: |
+          echo "# 📦 WASM Build Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Build artifacts analysis
+          if [[ -f "install/wasm/gtk-side.wasm" && -f "install/wasm/gtk-main" ]]; then
+            SIDE_SIZE=$(stat -c%s "install/wasm/gtk-side.wasm" 2>/dev/null || stat -f%z "install/wasm/gtk-side.wasm")
+
+            echo "## File Sizes" >> $GITHUB_STEP_SUMMARY
+            echo "| Module | Size |" >> $GITHUB_STEP_SUMMARY
+            echo "|--------|------|" >> $GITHUB_STEP_SUMMARY
+            echo "| SIDE_MODULE | $(numfmt --to=iec $SIDE_SIZE 2>/dev/null || echo "${SIDE_SIZE} bytes") |" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ Build artifacts not found" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          # Build environment info
+          echo "## Build Environment" >> $GITHUB_STEP_SUMMARY
+          echo "- **Emscripten**: \`$(emcc --version | head -n1 | cut -d' ' -f2)\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Meson**: \`$(meson --version)\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Deno**: \`$(deno --version | head -n1 | cut -d' ' -f2)\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Runner**: \`$(uname -m)\` $(uname -s)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload dist artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-package
+          path: |
+            install/
+          retention-days: 7
+
+  deploy-cloudflare-release:
+    name: Deploy Release to Cloudflare R2
+    runs-on: [self-hosted, docker, wasm, emscripten]
+    needs: [build]
+    if: startsWith(github.ref, 'refs/tags/v')
+    container:
+      image: ghcr.io/discere-os/wasm-builder:main-b23d443
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist-package
+          path: ./install
+
+      - name: Set release version
+        id: release-version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Calculate SHA-256
+        id: sha
+        run: |
+          WASM_FILE="install/wasm/gtk-side.wasm"
+          SHA=$(sha256sum "$WASM_FILE" | awk '{print $1}')
+          echo "sha=${SHA}" >> $GITHUB_OUTPUT
+          echo "${SHA}" > "${WASM_FILE}.sha256"
+          echo "🔒 SHA-256: ${SHA}"
+
+      - name: Deploy to Cloudflare R2
+        run: |
+          VERSION="${{ steps.release-version.outputs.VERSION }}"
+          SHA="${{ steps.sha.outputs.sha }}"
+
+          # Deploy SIDE_MODULE to versioned path (immutable)
+          wrangler r2 object put discere-os-wasm-production/gtk@${VERSION}/side.wasm \
+            --remote \
+            --file=install/wasm/gtk-side.wasm \
+            --content-type=application/wasm \
+            --cache-control="public, max-age=31536000, immutable"
+
+          # Deploy to SHA path (content-addressable)
+          wrangler r2 object put discere-os-wasm-production/gtk@sha-${SHA:0:7}/side.wasm \
+            --remote \
+            --file=install/wasm/gtk-side.wasm \
+            --content-type=application/wasm \
+            --cache-control="public, max-age=31536000, immutable"
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Verify deployment
+        run: |
+          sleep 15
+          VERSION="${{ steps.release-version.outputs.VERSION }}"
+          curl -I "https://wasm.discere.cloud/gtk@${VERSION}/side.wasm" || exit 1
+          echo "✅ Cloudflare R2 deployment verified"
+
+  deploy-cloudflare-snapshot:
+    name: Deploy Snapshot to Cloudflare R2
+    runs-on: [self-hosted, docker, wasm, emscripten]
+    needs: [build]
+    if: github.ref == 'refs/heads/wasm' && github.event_name == 'push'
+    container:
+      image: ghcr.io/discere-os/wasm-builder:main-b23d443
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist-package
+          path: ./install
+
+      - name: Set snapshot version
+        id: version
+        run: echo "VERSION=sha-$(echo $GITHUB_SHA | cut -c1-7)" >> $GITHUB_OUTPUT
+
+      - name: Calculate SHA-256 and generate metadata
+        id: metadata
+        run: |
+          WASM_FILE="install/wasm/gtk-side.wasm"
+          SHA=$(sha256sum "$WASM_FILE" | awk '{print $1}')
+          SIZE=$(stat -c%s "$WASM_FILE")
+
+          echo "sha=${SHA}" >> $GITHUB_OUTPUT
+          echo "size=${SIZE}" >> $GITHUB_OUTPUT
+          echo "${SHA}" > "${WASM_FILE}.sha256"
+
+          echo "🔒 SHA-256: ${SHA}"
+          echo "📦 Size: $((SIZE / 1024)) KB"
+
+      - name: Deploy snapshot to Cloudflare R2
+        run: |
+          VERSION="${{ steps.version.outputs.VERSION }}"
+
+          # Deploy SIDE_MODULE only (MAIN_MODULE for testing/NPM only)
+          wrangler r2 object put discere-os-wasm-production/gtk@${VERSION}/side.wasm \
+            --remote \
+            --file=install/wasm/gtk-side.wasm \
+            --content-type=application/wasm \
+            --cache-control="public, max-age=31536000, immutable"
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
