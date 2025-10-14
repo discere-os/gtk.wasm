@@ -19,8 +19,8 @@
 
     "manifest": "deno run --allow-read --allow-write --allow-run ../../../../scripts/generate-wasm-manifest.ts .",
 
-    "build:deps:meson": "bash -lc 'set -e; cd ..; libs=( zlib.wasm libexpat.wasm libffi.wasm libpng.wasm libjpeg-turbo.wasm libtiff.wasm pixman.wasm freetype.wasm fontconfig.wasm fribidi.wasm harfbuzz.wasm cairo.wasm gdk-pixbuf.wasm pango.wasm graphene.wasm glib.wasm epoxy.wasm icu.wasm ); for d in \"${libs[@]}\"; do echo \"[deps] Building $d (SIDE)\"; (cd $d && if deno task | grep -q build:side:meson; then deno task build:side:meson; elif deno task | grep -q build:side; then deno task build:side; elif deno task | grep -q build:wasm:meson; then deno task build:wasm:meson; elif deno task | grep -q build:wasm; then deno task build:wasm; else echo \"No suitable build task found in $d\"; fi); done'",
-    "build:wasm:meson": "deno task build:deps:meson && bash scripts/unified-build.sh standard",
-    "build:all:meson": "deno task build:wasm:meson"
+    "build:deps:meson": "bash -lc 'set -e; cd ..; libs=( zlib.wasm libexpat.wasm libffi.wasm libpng.wasm libjpeg-turbo.wasm libtiff.wasm pixman.wasm freetype.wasm fontconfig.wasm fribidi.wasm harfbuzz.wasm cairo.wasm gdk-pixbuf.wasm pango.wasm graphene.wasm glib.wasm epoxy.wasm icu.wasm ); for d in \"${libs[@]}\"; do echo \"[deps] Building $d (SIDE)\"; (cd $d && if deno task | grep -q build:side:meson; then deno task build:side; elif deno task | grep -q build:side; then deno task build:side; elif deno task | grep -q build:wasm:meson; then deno task build:wasm; elif deno task | grep -q build:wasm; then deno task build:wasm; else echo \"No suitable build task found in $d\"; fi); done'",
+    "build:wasm": "deno task build:deps:meson && bash scripts/unified-build.sh standard",
+    "build:all:meson": "deno task build:wasm"
   }
 }
