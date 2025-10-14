@@ -1,8 +1,8 @@
 /**
- * Type definitions for ${LIB_TITLE} WASM
+ * Type definitions for Gtk WASM
  */
 
-export interface ${LIB_UPPER}Module {
+export interface GTKModule {
   _malloc: (size: number) => number
   _free: (ptr: number) => void
   HEAPU8: Uint8Array
@@ -10,9 +10,9 @@ export interface ${LIB_UPPER}Module {
   getValue: (ptr: number, type: string) => number
 }
 
-export class ${LIB_UPPER}Error extends Error {
+export class GTKError extends Error {
   constructor(message: string) {
     super(message)
-    this.name = '${LIB_UPPER}Error'
+    this.name = 'GTKError'
   }
 }

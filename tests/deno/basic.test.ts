@@ -7,7 +7,7 @@ Deno.test("Deno runtime features", () => {
 
 Deno.test("WASM file accessibility", async () => {
   try {
-    const wasmFile = await Deno.stat("./install/wasm/${LIB_NAME}-main.wasm")
+    const wasmFile = await Deno.stat("./install/wasm/gtk-main.wasm")
     assert(wasmFile.isFile, "WASM file should exist")
     assert(wasmFile.size > 0, "WASM file should not be empty")
     console.log(`✅ Found WASM file: ${wasmFile.size} bytes`)

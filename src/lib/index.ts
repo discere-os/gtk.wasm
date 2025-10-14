@@ -1,9 +1,9 @@
 /**
- * @module ${LIB_TITLE} WASM
- * TypeScript-first ${LIB_TITLE} library for WebAssembly
+ * @module Gtk WASM
+ * TypeScript-first Gtk library for WebAssembly
  */
 
-export default class ${LIB_TITLE}WASM {
+export default class GtkWASM {
   private module: any = null
   private initialized = false
 
@@ -18,8 +18,8 @@ export default class ${LIB_TITLE}WASM {
   private async loadWASM(): Promise<any> {
     // Try local build first
     const localPaths = [
-      './../../install/wasm/${LIB_NAME}-main.js',
-      './../../install/wasm/${LIB_NAME}-release.js',
+      './../../install/wasm/gtk-main.js',
+      './../../install/wasm/gtk-release.js',
     ]
 
     for (const path of localPaths) {
@@ -32,6 +32,6 @@ export default class ${LIB_TITLE}WASM {
       }
     }
 
-    throw new Error('Failed to load ${LIB_NAME}.wasm')
+    throw new Error('Failed to load gtk.wasm')
   }
 }
