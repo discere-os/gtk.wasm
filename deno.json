@@ -1,9 +1,17 @@
 {
   "name": "@discere-os/gtk.wasm",
+  "version": "4.16.9",
+  "description": "GTK WASM library with web-native optimizations for Discere OS",
   "exports": {
-    ".": "./",
+    ".": "./src/lib/index.ts",
     "./side": "./install/wasm/gtk-side.wasm",
-    "./main": "./install/wasm/gtk-main.js"
+    "./main": "./install/wasm/gtk-main.js",
+    "./types": "./src/lib/types.ts"
+  },
+  "imports": {
+    "module": "data:application/javascript,export const createRequire = () => () => { throw new Error('Node.js not supported'); }; export default { createRequire };",
+    "path": "data:application/javascript,export const join = (...args) => args.join('/'); export default { join };",
+    "fs": "data:application/javascript,export const readFileSync = () => { throw new Error('fs not supported'); }; export default { readFileSync };"
   },
   "tasks": {
     "build:wasm": "bash scripts/unified-build.sh standard",
@@ -13,14 +21,24 @@
 
     "demo": "deno run --allow-read demo-deno.ts",
     "test": "deno test --allow-read tests/deno/",
+    "test:basic": "deno test --allow-read tests/deno/basic.test.ts",
+    "test:performance": "deno test --allow-read tests/deno/performance.test.ts",
+
+    "bench": "deno run --allow-read bench/full_benchmark.ts",
+    "bench:simd": "deno run --allow-read bench/simd_bench.ts",
+    "bench:crypto": "deno run --allow-read bench/crypto_bench.ts",
 
     "clean": "rm -rf build build-* install _build_wasm",
     "fetch-deps": "FETCH_ONLY=true bash scripts/unified-build.sh standard",
 
+    "validate:all": "deno task test && deno task bench",
+
     "manifest": "deno run --allow-read --allow-write --allow-run ../../../../scripts/generate-wasm-manifest.ts .",
 
     "build:deps:meson": "bash -lc 'set -e; cd ..; libs=( zlib.wasm libexpat.wasm libffi.wasm libpng.wasm libjpeg-turbo.wasm libtiff.wasm pixman.wasm freetype.wasm fontconfig.wasm fribidi.wasm harfbuzz.wasm cairo.wasm gdk-pixbuf.wasm pango.wasm graphene.wasm glib.wasm epoxy.wasm icu.wasm ); for d in \"${libs[@]}\"; do echo \"[deps] Building $d (SIDE)\"; (cd $d && if deno task | grep -q build:side:meson; then deno task build:side; elif deno task | grep -q build:side; then deno task build:side; elif deno task | grep -q build:wasm:meson; then deno task build:wasm; elif deno task | grep -q build:wasm; then deno task build:wasm; else echo \"No suitable build task found in $d\"; fi); done'",
-    "build:wasm": "deno task build:deps:meson && bash scripts/unified-build.sh standard",
-    "build:all:meson": "deno task build:wasm"
+    "build:all:meson": "deno task build:deps:meson && bash scripts/unified-build.sh standard"
+  },
+  "publish": {
+    "exclude": ["build*", "*.sh", ".git*", ".github", ".gitlab", ".gitlab-ci", "demos", "examples", "testsuite", "test"]
   }
 }
