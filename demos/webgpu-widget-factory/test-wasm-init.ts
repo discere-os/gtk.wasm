@@ -46,6 +46,9 @@ async function loadWASMModule(): Promise<WASMModule> {
     }
   };
 
+  // Track file loading completion
+  let filesLoaded = false;
+
   // Initialize module with WASM binary and preloaded data
   const module: WASMModule = await moduleFactory.default({
     wasmBinary: wasmBytes.buffer,
@@ -67,28 +70,48 @@ async function loadWASMModule(): Promise<WASMModule> {
     },
     onRuntimeInitialized: () => {
       console.log("✅ WASM runtime initialized");
+    },
+    // Monitor file loading dependencies
+    monitorRunDependencies: (left: number) => {
+      console.log(`[Deno] Run dependencies remaining: ${left}`);
+
+      if (left === 0) {
+        console.log("[Deno] All files loaded, starting demo...");
+        filesLoaded = true;
+
+        // Now safe to start demo - fonts are loaded
+        // Note: This will throw "unwind" which is expected for emscripten_set_main_loop
+        try {
+          module.ccall('start_demo', null, [], []);
+        } catch (e) {
+          if (e !== "unwind") {
+            console.error("[Deno] Error starting demo:", e);
+            throw e;
+          }
+          // "unwind" is expected - main loop started successfully
+        }
+      }
     }
   });
 
-  // Call main() after module is initialized
+  // Call main() to trigger file loading (with INVOKE_RUN=0, just loads files)
   module.callMain();
 
-  // Wait a bit for filesystem to start loading
-  await new Promise(resolve => setTimeout(resolve, 100));
+  console.log("[Deno] Waiting for file loading to complete...");
 
-  // Call start_demo - it will retry if fonts aren't ready yet
-  // Note: This will throw "unwind" which is expected behavior for emscripten_set_main_loop
-  try {
-    module._start_demo();
-  } catch (e) {
-    if (e !== "unwind") {
-      throw e; // Re-throw if it's not the expected unwind exception
-    }
-    // "unwind" is expected - it means the main loop started successfully
+  // Wait for files to load and demo to start
+  let waitCount = 0;
+  while (!filesLoaded && waitCount < 50) {
+    await new Promise(resolve => setTimeout(resolve, 100));
+    waitCount++;
   }
 
-  // Wait for initialization to complete (with retries)
-  await new Promise(resolve => setTimeout(resolve, 500));
+  if (!filesLoaded) {
+    throw new Error("Timeout waiting for files to load");
+  }
+
+  // Wait a bit more for initialization to complete
+  await new Promise(resolve => setTimeout(resolve, 300));
 
   return { module, canvas };
 }
@@ -106,10 +129,10 @@ Deno.test({
 
     console.log("\n🧪 Testing initialization...");
 
-    // start_demo() was already called by loadWASMModule()
+    // start_demo() was already called by monitorRunDependencies callback
     // The "unwind" exception is expected - it's how emscripten_set_main_loop works
     // Wait a bit for initialization to complete and render some frames
-    await new Promise(resolve => setTimeout(resolve, 300));
+    await new Promise(resolve => setTimeout(resolve, 200));
 
     // Get metrics to verify initialization succeeded
     const widgetCount = module._get_widget_count();

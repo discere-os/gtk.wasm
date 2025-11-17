@@ -94,14 +94,17 @@ int init_webgpu() {
     printf("✅ Cairo surface created: %dx%d\n", CANVAS_WIDTH, CANVAS_HEIGHT);
 
     // Initialize fontconfig with embedded fonts
-    printf("Initializing fontconfig...\n");
+    printf("[WASM] Initializing fontconfig...\n");
+
+    // Set fontconfig configuration file
+    setenv("FONTCONFIG_FILE", "/etc/fonts/fonts.conf", 1);
 
     // Initialize fontconfig library first
     if (!FcInit()) {
-        printf("❌ FcInit() failed\n");
+        printf("[WASM] ❌ FcInit() failed\n");
         return -1;
     }
-    printf("✅ FcInit() completed\n");
+    printf("[WASM] ✅ FcInit() completed\n");
 
     // Get current config and add fonts to it
     FcConfig *config = FcConfigGetCurrent();
@@ -156,38 +159,37 @@ int init_webgpu() {
     FcBool set_result = FcConfigSetCurrent(config);
     printf("FcConfigSetCurrent returned: %d\n", set_result);
 
-    // List available fonts for debugging
+    // Verify fonts were loaded
     FcPattern *pat = FcPatternCreate();
     FcObjectSet *os = FcObjectSetBuild(FC_FAMILY, FC_STYLE, FC_FILE, NULL);
     FcFontSet *fs = FcFontList(config, pat, os);
 
     if (fs) {
-        printf("Found %d fonts:\n", fs->nfont);
-        for (int i = 0; i < fs->nfont && i < 10; i++) {
-            FcChar8 *family, *style, *file;
+        printf("[WASM] Found %d fonts:\n", fs->nfont);
+        for (int i = 0; i < fs->nfont; i++) {
+            FcChar8 *family, *style;
             if (FcPatternGetString(fs->fonts[i], FC_FAMILY, 0, &family) == FcResultMatch &&
-                FcPatternGetString(fs->fonts[i], FC_STYLE, 0, &style) == FcResultMatch &&
-                FcPatternGetString(fs->fonts[i], FC_FILE, 0, &file) == FcResultMatch) {
-                printf("  - %s %s (%s)\n", family, style, file);
+                FcPatternGetString(fs->fonts[i], FC_STYLE, 0, &style) == FcResultMatch) {
+                printf("[WASM]   %s %s\n", family, style);
             }
         }
         FcFontSetDestroy(fs);
     } else {
-        printf("❌ FcFontList returned NULL\n");
+        printf("[WASM] ❌ FcFontList returned NULL\n");
     }
     FcObjectSetDestroy(os);
     FcPatternDestroy(pat);
 
     if (fs && fs->nfont == 0) {
-        printf("❌ No fonts found - cannot initialize Pango\n");
+        printf("[WASM] ❌ No fonts found - fontconfig misconfigured\n");
         return -1;
     }
 
-    printf("✅ Fontconfig initialized with %d fonts\n", fs ? fs->nfont : 0);
+    printf("[WASM] ✅ Fontconfig initialized with embedded fonts\n");
 
-    if (fs->nfont < 4) {
-        printf("⚠️  Warning: Expected 4 fonts but only found %d\n", fs->nfont);
-        printf("⚠️  Proceeding with limited font support\n");
+    if (fs && fs->nfont < 4) {
+        printf("[WASM] ⚠️  Warning: Expected 4 fonts but only found %d\n", fs->nfont);
+        printf("[WASM] ⚠️  Proceeding with limited font support\n");
     }
 
     // Skip Pango - use Cairo toy font API directly
@@ -685,25 +687,40 @@ static bool fonts_available() {
 // Called after filesystem is ready
 EMSCRIPTEN_KEEPALIVE
 void start_demo() {
-    printf("Starting demo after filesystem ready...\n");
+    printf("[WASM] Widget factory demo starting...\n");
+    printf("[WASM] Waiting for fonts to load...\n");
 
-    // Check if fonts are available
-    if (!fonts_available()) {
-        printf("⚠️  Fonts not yet loaded, retrying...\n");
-        // Schedule retry in 50ms
-        EM_ASM({
-            setTimeout(function() {
-                Module._start_demo();
-            }, 50);
-        });
+    // Poll for font file existence using ASYNCIFY
+    // This allows C code to "sleep" and yield to the JS event loop
+    int retries = 0;
+    const int MAX_RETRIES = 100;  // 1 second timeout (100 * 10ms)
+
+    while (retries < MAX_RETRIES) {
+        FILE *f = fopen("/fonts/Roboto-Regular.ttf", "rb");
+        if (f) {
+            fclose(f);
+            printf("[WASM] ✅ Fonts available after %dms\n", retries * 10);
+            break;
+        }
+
+        // Sleep for 10ms and yield to event loop
+        // This allows Emscripten to continue loading files
+        emscripten_sleep(10);
+        retries++;
+    }
+
+    if (retries >= MAX_RETRIES) {
+        printf("[WASM] ❌ Timeout waiting for fonts\n");
+        printf("[WASM] Font loading failed - check build configuration\n");
         return;
     }
 
-    printf("✅ Fonts are available, initializing...\n");
+    printf("[WASM] ✅ Fonts are available, initializing...\n");
 
     if (init_webgpu() == 0) {
+        printf("[WASM] Starting main loop...\n");
         emscripten_set_main_loop(main_loop, 60, 1);
     } else {
-        printf("Failed to initialize, exiting\n");
+        printf("[WASM] Failed to initialize, exiting\n");
     }
 }
